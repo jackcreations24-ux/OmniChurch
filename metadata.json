@@ -1,0 +1,10 @@
+{
+  "name": "OmniChurch",
+  "description": "Ultra-premium native Android companion app for OmniChurch Pro with digital member ID, real-time church feed, and QR attendance scanner.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,766 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated OmniChurch user profile and role-based access control record.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "Verified email address of the user."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Full display name of the user."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional avatar URL."
+        },
+        "churchId": {
+          "type": "string",
+          "description": "Tenant church ID to which this user belongs."
+        },
+        "churchName": {
+          "type": "string",
+          "description": "Display name of the user's church."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["member", "usher", "admin", "super_admin"],
+          "description": "Role-based access level within the church."
+        },
+        "memberId": {
+          "type": "string",
+          "description": "Linked Member document ID."
+        },
+        "language": {
+          "type": "string",
+          "enum": ["ht", "fr", "en", "es"],
+          "description": "Preferred UI language code."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "email", "displayName", "role", "createdAt"]
+    },
+    "Church": {
+      "title": "Church",
+      "description": "Multi-tenant church organization entity.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Official name of the church."
+        },
+        "code": {
+          "type": "string",
+          "description": "Short church prefix code used in member Matrikil (e.g. CH001, ETG01)."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the church administrator who created/owns the tenant."
+        },
+        "adminGoogleEmail": {
+          "type": "string",
+          "description": "Authorized Google/Admin email for church administration."
+        },
+        "adminGoogleUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the church owner."
+        },
+        "adminGoogleName": {
+          "type": "string",
+          "description": "Display name of the church owner."
+        },
+        "adminGooglePhoto": {
+          "type": "string",
+          "description": "Profile photo URL of the church owner."
+        },
+        "adminAuthMethod": {
+          "type": "string",
+          "enum": ["email_password", "google", "both", "legacy_pin"],
+          "description": "Primary authentication method for the church owner."
+        },
+        "adminPasscode": {
+          "type": "string",
+          "description": "Salted SHA-256 (sha256:v1:...) administrative Quick PIN or legacy passcode."
+        },
+        "adminPasscodeUpdatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO-8601 timestamp when adminPasscode was last updated."
+        },
+        "quickPinEnabled": {
+          "type": "boolean",
+          "description": "Whether Quick PIN resume is enabled for the signed-in church owner."
+        },
+        "autoLockMinutes": {
+          "type": "integer",
+          "description": "Admin inactivity auto-lock timeout in minutes (0 = disabled)."
+        },
+        "logoUrl": {
+          "type": "string",
+          "description": "Optional URL for church emblem/logo."
+        },
+        "bannerUrl": {
+          "type": "string",
+          "description": "Optional URL for church sanctuary hero banner."
+        },
+        "pastor": {
+          "type": "string",
+          "description": "Head Pastor name."
+        },
+        "city": {
+          "type": "string",
+          "description": "City or region."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Church phone contact."
+        },
+        "email": {
+          "type": "string",
+          "description": "Church contact email."
+        },
+        "motto": {
+          "type": "string",
+          "description": "Church motto or theme."
+        },
+        "themeColor": {
+          "type": "string",
+          "description": "Theme color code (e.g. indigo, blue, amber)."
+        },
+        "logoIcon": {
+          "type": "string",
+          "description": "Emblem icon name (e.g. Church, Flame)."
+        },
+        "address": {
+          "type": "string",
+          "description": "Physical location/address of the church."
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Church motto or welcome tagline."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of update."
+        }
+      },
+      "required": ["name"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Official church member identity record including Matrikil, PIN, optional Google link, and barcodeToken for QR verification.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "User or member actor identifier."
+        },
+        "churchId": {
+          "type": "string",
+          "description": "Tenant church ID."
+        },
+        "churchName": {
+          "type": "string",
+          "description": "Tenant church name."
+        },
+        "churchLogoUrl": {
+          "type": "string",
+          "description": "Optional church logo URL."
+        },
+        "fullName": {
+          "type": "string",
+          "description": "Member full legal/display name."
+        },
+        "memberId": {
+          "type": "string",
+          "description": "Official Member Matrikil ID (e.g. CH001-JD4827)."
+        },
+        "memberCode": {
+          "type": "string",
+          "description": "Human-readable member ID code (e.g. CH001-JD4827 or OM-0258743)."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Optional member phone number."
+        },
+        "email": {
+          "type": "string",
+          "description": "Optional member email address."
+        },
+        "pin": {
+          "type": "string",
+          "description": "Dedicated security PIN assigned by Church Admin."
+        },
+        "securityPin": {
+          "type": "string",
+          "description": "Alternative security PIN field."
+        },
+        "googleEmail": {
+          "type": "string",
+          "description": "Optional linked Google account email."
+        },
+        "googleUid": {
+          "type": "string",
+          "description": "Optional linked Google account UID."
+        },
+        "googlePhoto": {
+          "type": "string",
+          "description": "Optional linked Google profile photo URL."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional member portrait photo URL."
+        },
+        "department": {
+          "type": "string",
+          "description": "Church ministry or department (e.g. Adorasyon)."
+        },
+        "role": {
+          "type": "string",
+          "description": "Ministry role (e.g. Mizisyen, Manm, Ouvriye)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "inactive", "pending"],
+          "description": "Membership status."
+        },
+        "barcodeToken": {
+          "type": "string",
+          "description": "Cryptographic/opaque QR verification token."
+        },
+        "joinDateFormatted": {
+          "type": "string",
+          "description": "Formatted join date string."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of update."
+        }
+      },
+      "required": [
+        "userId",
+        "churchId",
+        "churchName",
+        "fullName",
+        "memberCode",
+        "department",
+        "role",
+        "status",
+        "barcodeToken",
+        "createdAt"
+      ]
+    },
+    "ChurchService": {
+      "title": "ChurchService",
+      "description": "Worship service or church event supporting live feed and QR attendance.",
+      "type": "object",
+      "properties": {
+        "churchId": {
+          "type": "string",
+          "description": "Tenant church ID."
+        },
+        "churchName": {
+          "type": "string",
+          "description": "Tenant church name."
+        },
+        "title": {
+          "type": "string",
+          "description": "Service name (e.g. Sèvis Dimanch)."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional service details."
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Optional service banner image URL."
+        },
+        "dateFormatted": {
+          "type": "string",
+          "description": "Formatted date and start time."
+        },
+        "startTimeEpochMillis": {
+          "type": "integer",
+          "description": "Scheduled start time in epoch milliseconds."
+        },
+        "lateToleranceMinutes": {
+          "type": "integer",
+          "description": "Grace period in minutes before attendance is marked late."
+        },
+        "isOpenForAttendance": {
+          "type": "boolean",
+          "description": "Whether QR attendance check-in is currently open."
+        },
+        "isLive": {
+          "type": "boolean",
+          "description": "Whether the service is currently live."
+        },
+        "ushers": {
+          "type": "string",
+          "description": "Comma-separated display names of members assigned as Akèy / Resepsyon for this service."
+        },
+        "usherMemberIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Member document/code IDs temporarily authorized to scan attendance for this active service."
+        },
+        "usherUserIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Firebase Auth UIDs temporarily authorized to scan attendance for this active service."
+        },
+        "authorId": {
+          "type": "string",
+          "description": "Creator UID."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Creator display name."
+        },
+        "reactionsCount": {
+          "type": "integer",
+          "description": "Total reaction count."
+        },
+        "commentsCount": {
+          "type": "integer",
+          "description": "Total comment count."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of update."
+        }
+      },
+      "required": [
+        "churchId",
+        "churchName",
+        "title",
+        "dateFormatted",
+        "startTimeEpochMillis",
+        "lateToleranceMinutes",
+        "isOpenForAttendance",
+        "isLive",
+        "authorId",
+        "authorName",
+        "reactionsCount",
+        "commentsCount",
+        "createdAt"
+      ]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Official church announcement published to the member live feed.",
+      "type": "object",
+      "properties": {
+        "churchId": {
+          "type": "string",
+          "description": "Tenant church ID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Announcement headline."
+        },
+        "content": {
+          "type": "string",
+          "description": "Announcement body content."
+        },
+        "department": {
+          "type": "string",
+          "description": "Publishing department name."
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Optional image attachment URL."
+        },
+        "isPinned": {
+          "type": "boolean",
+          "description": "Whether the announcement is pinned at top."
+        },
+        "authorId": {
+          "type": "string",
+          "description": "Author UID."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Author display name."
+        },
+        "reactionsCount": {
+          "type": "integer",
+          "description": "Total reactions count."
+        },
+        "commentsCount": {
+          "type": "integer",
+          "description": "Total comments count."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of update."
+        }
+      },
+      "required": [
+        "churchId",
+        "title",
+        "content",
+        "department",
+        "isPinned",
+        "authorId",
+        "authorName",
+        "reactionsCount",
+        "commentsCount",
+        "createdAt"
+      ]
+    },
+    "AnnouncementReaction": {
+      "title": "AnnouncementReaction",
+      "description": "Member reaction on a service or announcement.",
+      "type": "object",
+      "properties": {
+        "targetId": {
+          "type": "string",
+          "description": "ID of the announcement or service."
+        },
+        "churchId": {
+          "type": "string",
+          "description": "Tenant church ID."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reacting user UID."
+        },
+        "userName": {
+          "type": "string",
+          "description": "Reacting user name."
+        },
+        "reactionType": {
+          "type": "string",
+          "enum": ["like", "love", "wow", "amen"],
+          "description": "Type of reaction."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        }
+      },
+      "required": ["targetId", "churchId", "userId", "userName", "reactionType", "createdAt"]
+    },
+    "AnnouncementComment": {
+      "title": "AnnouncementComment",
+      "description": "Member comment on a service or announcement.",
+      "type": "object",
+      "properties": {
+        "targetId": {
+          "type": "string",
+          "description": "ID of the announcement or service."
+        },
+        "churchId": {
+          "type": "string",
+          "description": "Tenant church ID."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Commenting user UID."
+        },
+        "userName": {
+          "type": "string",
+          "description": "Commenting user display name."
+        },
+        "userPhotoUrl": {
+          "type": "string",
+          "description": "Optional commenting user avatar URL."
+        },
+        "content": {
+          "type": "string",
+          "description": "Comment text content."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        }
+      },
+      "required": ["targetId", "churchId", "userId", "userName", "content", "createdAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Verified member or cross-church visitor attendance check-in record for an active service.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Attendance document ID (e.g. {serviceId}_{memberDbId} for cross-church visitor parity)."
+        },
+        "churchId": {
+          "type": "string",
+          "description": "Host tenant church ID where the service is taking place."
+        },
+        "serviceId": {
+          "type": "string",
+          "description": "Service document ID."
+        },
+        "serviceName": {
+          "type": "string",
+          "description": "Service display title (regular host records)."
+        },
+        "serviceCategory": {
+          "type": "string",
+          "description": "Service category key (visitor Web/PC parity)."
+        },
+        "serviceTitle": {
+          "type": "string",
+          "description": "Service display title (visitor Web/PC parity)."
+        },
+        "serviceDate": {
+          "type": "string",
+          "description": "Service date string YYYY-MM-DD."
+        },
+        "memberDocId": {
+          "type": "string",
+          "description": "Member document ID."
+        },
+        "memberId": {
+          "type": "string",
+          "description": "Member Matrikil code (e.g. ALP-0001)."
+        },
+        "memberDbId": {
+          "type": "string",
+          "description": "Origin Firestore member document ID."
+        },
+        "memberCode": {
+          "type": "string",
+          "description": "Member code (e.g. OM-0258743)."
+        },
+        "memberName": {
+          "type": "string",
+          "description": "Member full name."
+        },
+        "memberPhone": {
+          "type": "string",
+          "description": "Optional member phone."
+        },
+        "memberDepartment": {
+          "type": "string",
+          "description": "Optional member department."
+        },
+        "memberPhotoUrl": {
+          "type": "string",
+          "description": "Optional member photo URL."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Member user UID."
+        },
+        "recordedBy": {
+          "type": "string",
+          "description": "Staff UID who recorded the check-in (visitor Web/PC parity)."
+        },
+        "recordedByUid": {
+          "type": "string",
+          "description": "Admin or usher UID who recorded the check-in."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["on_time", "late"],
+          "description": "Calculated attendance punctuality status."
+        },
+        "attendanceStatus": {
+          "type": "string",
+          "enum": ["on_time", "late"],
+          "description": "Calculated attendance punctuality status (visitor Web/PC parity)."
+        },
+        "lateMinutes": {
+          "type": "integer",
+          "description": "Minutes late (>= 0)."
+        },
+        "lateToleranceMinutes": {
+          "type": "integer",
+          "description": "Configured grace tolerance minutes."
+        },
+        "checkInMethod": {
+          "type": "string",
+          "enum": ["qr_scan", "barcode", "manual"],
+          "description": "Check-in capture method."
+        },
+        "barcodeToken": {
+          "type": "string",
+          "description": "Verified member barcodeToken."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "UTC ISO timestamp string (visitor parity) or epoch millis."
+        },
+        "attendanceRole": {
+          "type": "string",
+          "enum": ["member", "visitor"],
+          "description": "Attendance state: 'member' for host church members, 'visitor' for cross-church Vizitè."
+        },
+        "isVisitor": {
+          "type": "boolean",
+          "description": "True when recorded as a cross-church visitor check-in."
+        },
+        "homeChurchId": {
+          "type": "string",
+          "description": "Canonical Firestore ID of the visitor's origin church."
+        },
+        "homeChurchName": {
+          "type": "string",
+          "description": "Display name of the visitor's origin church."
+        },
+        "hostChurchName": {
+          "type": "string",
+          "description": "Display name of the host church where the visitor checked in."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of attendance registration."
+        }
+      },
+      "required": [
+        "churchId",
+        "serviceId",
+        "memberName",
+        "checkInMethod"
+      ]
+    },
+    "ChurchNotification": {
+      "title": "ChurchNotification",
+      "description": "Real-time notification delivered to a church member.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Recipient user UID."
+        },
+        "churchId": {
+          "type": "string",
+          "description": "Tenant church ID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Notification title."
+        },
+        "message": {
+          "type": "string",
+          "description": "Notification body text."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["service", "announcement", "attendance", "system"],
+          "description": "Category of notification."
+        },
+        "isRead": {
+          "type": "boolean",
+          "description": "Read status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        }
+      },
+      "required": ["userId", "churchId", "title", "message", "type", "isRead", "createdAt"]
+    },
+    "DeveloperEngineConfig": {
+      "title": "DeveloperEngineConfig",
+      "description": "Remote Developer Engine configuration for AdMob monetization switches, anti-ban test lock, and church Pro licenses.",
+      "type": "object",
+      "properties": {
+        "adMob": {
+          "type": "object",
+          "description": "Remote AdMob configuration map."
+        },
+        "licenses": {
+          "type": "array",
+          "description": "List of church Pro licenses."
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of last remote push."
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Authenticated user profile and RBAC assignment."
+    },
+    "/churches/{churchId}": {
+      "schema": { "$ref": "#/entities/Church" },
+      "description": "Multi-tenant church records."
+    },
+    "/members/{memberId}": {
+      "schema": { "$ref": "#/entities/Member" },
+      "description": "Church member identity cards and QR barcode tokens."
+    },
+    "/services/{serviceId}": {
+      "schema": { "$ref": "#/entities/ChurchService" },
+      "description": "Church worship services and attendance windows."
+    },
+    "/announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Official church announcements."
+    },
+    "/announcement_reactions/{reactionId}": {
+      "schema": { "$ref": "#/entities/AnnouncementReaction" },
+      "description": "Member reactions on announcements and services."
+    },
+    "/announcement_comments/{commentId}": {
+      "schema": { "$ref": "#/entities/AnnouncementComment" },
+      "description": "Member comments on announcements and services."
+    },
+    "/attendances/{attendanceId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Verified attendance check-in records."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/ChurchNotification" },
+      "description": "Per-user church notifications."
+    },
+    "/app_config/{configId}": {
+      "schema": { "$ref": "#/entities/DeveloperEngineConfig" },
+      "description": "Remote Developer Engine & AdMob configuration document."
+    }
+  }
+}

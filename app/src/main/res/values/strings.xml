@@ -1,0 +1,173 @@
+<resources>
+    <string name="app_name">OmniChurch</string>
+    <string name="app_subtitle_mobile">Mobile</string>
+    <string name="app_subtitle_pro">Pro</string>
+
+    <!-- Auth & Onboarding -->
+    <string name="auth_welcome_title">Byenveni nan OmniChurch Pro</string>
+    <string name="auth_welcome_subtitle">Platfòm dijital ofisyèl pou jesyon legliz, kat idantite manm 3D, ak kontwòl prezans QR an tan reyèl.</string>
+    <string name="auth_sign_in_google">Konekte ak Google</string>
+    <string name="auth_signing_in">Koneksyon an kou...</string>
+    <string name="auth_security_badge">Sekirite Multi-Tenant • Done an Tan Reyèl</string>
+    <!-- Firebase & Google OAuth Configuration -->
+    <string name="default_web_client_id" translatable="false">770562747895-9u95tikk4ae0u1prn4rmvcl12ubcrd9i.apps.googleusercontent.com</string>
+    <string name="firebase_project_id" translatable="false">gen-lang-client-0674712996</string>
+    <string name="firebase_project_number" translatable="false">770562747895</string>
+
+    <string name="auth_error_missing_client">Konfigirasyon Google Sign-In manke: default_web_client_id pa jwenn.</string>
+    <string name="auth_error_failed">Koneksyon echwe. Tanpri eseye ankò.</string>
+    <string name="auth_cancelled">Koneksyon anile. Chwazi yon kont Google pou kontinye.</string>
+    <string name="auth_sign_out">Dekonekte</string>
+
+    <!-- Church & Member Setup (Real Firestore Onboarding when no record exists yet) -->
+    <string name="setup_church_title">Konfigire Espas Legliz Ou</string>
+    <string name="setup_church_subtitle">Kont ou konekte, men ou poko gen yon dosye manm oswa legliz nan baz done OmniChurch Pro a. Kreye legliz ou oswa antre ID legliz ou.</string>
+    <string name="setup_mode_join">Antre nan yon Legliz</string>
+    <string name="setup_mode_create_church">Kreye Legliz (Admin)</string>
+    <string name="setup_church_name_label">Non Legliz la</string>
+    <string name="setup_church_id_label">ID Legliz la (Si ou deja genyen l)</string>
+    <string name="setup_church_address_label">Adrès Legliz la</string>
+    <string name="setup_member_fullname_label">Non Konplè Manm nan</string>
+    <string name="setup_member_department_label">Depatman (egz: Adorasyon)</string>
+    <string name="setup_member_role_label">Wòl (egz: Mizisyen, Manm, Ouvriye)</string>
+    <string name="setup_submit_button">Aktive Espas OmniChurch</string>
+
+    <!-- Member Home & Header -->
+    <string name="home_greeting">Bonjou, %1$s</string>
+    <string name="home_member_space">Manm Ofisyèl</string>
+    <string name="home_admin_space">Espas Admin</string>
+    <string name="home_hero_welcome">Byenveni nan</string>
+    <string name="home_hero_title">OmniChurch Pro</string>
+    <string name="home_hero_tagline">Legliz la nan poch ou</string>
+
+    <!-- Quick Actions -->
+    <string name="action_feed">Fil</string>
+    <string name="action_member_card">Kat Manm</string>
+    <string name="action_scan_qr">Eskane QR</string>
+    <string name="action_services">Sèvis</string>
+
+    <!-- Live Feed (Fil Aktyalite) -->
+    <string name="feed_section_title">Fil Aktyalite</string>
+    <string name="feed_see_all">Tout</string>
+    <string name="feed_live_badge">LIVE</string>
+    <string name="feed_official_announcement">Anons Ofisyèl</string>
+    <string name="feed_empty_title">Okenn Aktyalite Disponib</string>
+    <string name="feed_empty_subtitle">Poko gen sèvis oswa anons ofisyèl ki pibliye pou legliz ou a nan Firestore.</string>
+    <string name="feed_add_announcement">Pibliye Anons</string>
+    <string name="feed_add_service">Kreye Sèvis</string>
+    <string name="feed_react_amen">Amèn</string>
+    <string name="feed_comments_title">Kòmantè (%1$d)</string>
+    <string name="feed_comment_hint">Ekri yon kòmantè frè/sè...</string>
+    <string name="feed_comment_send">Voye</string>
+    <string name="feed_no_comments">Poko gen kòmantè. Se premye moun ki reyaji!</string>
+
+    <!-- Bottom Navigation -->
+    <string name="nav_home">Akèy</string>
+    <string name="nav_services">Sèvis</string>
+    <string name="nav_qr_center">QR</string>
+    <string name="nav_notifications">Anons</string>
+    <string name="nav_profile">Pwofil</string>
+
+    <!-- Digital Member ID Card (Kat Idantite Manm) -->
+    <string name="member_card_screen_title">Kat Idantite Manm</string>
+    <string name="member_status_active">Manm Aktif</string>
+    <string name="member_status_pending">An Atant</string>
+    <string name="member_status_inactive">Inaktif</string>
+    <string name="member_label_department">Depatman</string>
+    <string name="member_label_role">Wòl</string>
+    <string name="member_label_join_date">Dat Antre</string>
+    <string name="member_id_prefix">ID Manm: %1$s</string>
+    <string name="member_id_copied">ID Manm kopye!</string>
+    <string name="member_btn_qr_gallery">Galri QR</string>
+    <string name="member_btn_qr_gallery_sub">(Ekran Plen)</string>
+    <string name="member_btn_save_qr">Sove QR</string>
+    <string name="member_btn_save_qr_sub">nan Galri</string>
+    <string name="member_btn_share_card">Pataje</string>
+    <string name="member_btn_share_card_sub">Kat la</string>
+    <string name="member_qr_saved_success">Kòd QR la anrejistre nan Galri foto ou!</string>
+    <string name="member_qr_saved_error">Erè pandan anrejistreman QR la.</string>
+    <string name="member_no_card_title">Kat Manm Poko Disponib</string>
+    <string name="member_no_card_subtitle">Dosye manm ou an poko gen yon barcodeToken valide nan Firestore.</string>
+
+    <!-- Full-Screen QR Gallery Mode -->
+    <string name="qr_gallery_title">QR</string>
+    <string name="qr_gallery_brightness_note">Limyè ekran maksimòm aktive pou lekti QR rapid</string>
+    <string name="qr_gallery_offline_cached">Token QR Verifye • Pare pou Eskane</string>
+    <string name="qr_gallery_close">Fèmen Ekran Plen</string>
+
+    <!-- Admin / Usher QR Scanner (Lektè QR Admin) -->
+    <string name="scanner_screen_title">Lektè QR Admin</string>
+    <string name="scanner_role_admin">Admin</string>
+    <string name="scanner_role_usher">Ouvriye</string>
+    <string name="scanner_tab_qr">Eskane QR</string>
+    <string name="scanner_tab_manual">Antre Kòd Manm</string>
+    <string name="scanner_select_service_label">Chwazi Sèvis (Aktif)</string>
+    <string name="scanner_change_service">Chanje</string>
+    <string name="scanner_open_for_attendance">Ouvri pou Prezans</string>
+    <string name="scanner_closed_for_attendance">Fèmen pou Prezans</string>
+    <string name="scanner_no_active_service">Okenn sèvis aktif ouvri pou prezans kounye a.</string>
+    <string name="scanner_manual_input_label">Antre Kòd Manm oswa Token QR</string>
+    <string name="scanner_manual_input_hint">Egz: OM-0258743</string>
+    <string name="scanner_manual_submit">Valide Prezans</string>
+    <string name="scanner_camera_permission_title">Otorizasyon Kamera Obligatwa</string>
+    <string name="scanner_camera_permission_msg">OmniChurch bezwen aksè kamera pou eskane Kòd QR manm yo an tan reyèl.</string>
+    <string name="scanner_grant_permission">Otorize Kamera</string>
+    <string name="scanner_torch_toggle">Flach</string>
+
+    <!-- Attendance Validation Results -->
+    <string name="attendance_registered_title">Prezans Anrejistre</string>
+    <string name="attendance_status_on_time">A Lè</string>
+    <string name="attendance_status_late">An Reta</string>
+    <string name="attendance_service_prefix">Sèvis:</string>
+    <string name="attendance_scan_next">Eskane Pwochèn Manm</string>
+    <string name="attendance_err_invalid_qr">Kòd QR sa a pa valid oswa li pa egziste nan sistèm nan.</string>
+    <string name="attendance_err_wrong_church">Manm sa a pa fè pati legliz sa a (Multi-Tenant Isolation).</string>
+    <string name="attendance_err_duplicate">Prezans manm sa a deja anrejistre pou sèvis sa a.</string>
+    <string name="attendance_err_service_closed">Sèvis sa a fèmen pou prezans kounye a.</string>
+    <string name="attendance_err_unauthorized">Ou pa gen otorizasyon Admin oswa Ouvriye pou anrejistre prezans.</string>
+    <string name="attendance_err_network">Erè koneksyon rezo ak Firestore. Tanpri verifye entènèt ou.</string>
+
+    <!-- Services Management Screen -->
+    <string name="services_screen_title">Sèvis &amp; Prezans</string>
+    <string name="services_create_title">Kreye Nouvo Sèvis</string>
+    <string name="services_name_label">Non Sèvis la (egz: Sèvis Dimanch)</string>
+    <string name="services_date_label">Dat ak Lè (egz: 26 Okt. 2026 • 9:00 AM)</string>
+    <string name="services_tolerance_label">Tolerans Reta (Minit)</string>
+    <string name="services_open_toggle">Ouvri pou Prezans QR</string>
+    <string name="services_live_toggle">An Dirèk (LIVE)</string>
+    <string name="services_save_btn">Anrejistre Sèvis</string>
+    <string name="services_empty_title">Okenn Sèvis Anrejistre</string>
+    <string name="services_empty_subtitle">Kreyasyon sèvis pèmèt eskanè QR ak kalkil prezans A Lè / An Reta.</string>
+
+    <!-- Announcements Creation Dialog -->
+    <string name="announcement_create_title">Pibliye Anons Ofisyèl</string>
+    <string name="announcement_title_label">Tit Anons la</string>
+    <string name="announcement_dept_label">Depatman</string>
+    <string name="announcement_content_label">Mesaj Anons la</string>
+    <string name="announcement_pinned_toggle">Epingle anlè Fil Aktyalite a</string>
+    <string name="announcement_publish_btn">Pibliye Kounye a</string>
+
+    <!-- Notifications Screen -->
+    <string name="notifications_screen_title">Notifikasyon</string>
+    <string name="notifications_mark_all_read">Make tout kòm li</string>
+    <string name="notifications_empty_title">Okenn Notifikasyon</string>
+    <string name="notifications_empty_subtitle">Ou pral resevwa alèt lè gen nouvo sèvis, anons ofisyèl, oswa konfimasyon prezans.</string>
+
+    <!-- Profile & Settings Screen -->
+    <string name="profile_screen_title">Pwofil &amp; Paramèt</string>
+    <string name="profile_language_label">Lang Aplikasyon an</string>
+    <string name="profile_lang_ht">Kreyòl Ayisyen</string>
+    <string name="profile_lang_fr">Français</string>
+    <string name="profile_lang_en">English</string>
+    <string name="profile_lang_es">Español</string>
+    <string name="profile_edit_section">Modifye Enfòmasyon Manm</string>
+    <string name="profile_save_changes">Sove Chanjman yo</string>
+    <string name="profile_saved_toast">Pwofil mete ajou nan Firestore!</string>
+    <string name="profile_database_info">Baz Done: Named Firestore Enterprise</string>
+
+    <!-- Common -->
+    <string name="common_cancel">Anile</string>
+    <string name="common_close">Fèmen</string>
+    <string name="common_retry">Eseye Ankò</string>
+    <string name="common_loading">Chajman done reyèl...</string>
+</resources>

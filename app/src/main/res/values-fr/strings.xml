@@ -1,0 +1,153 @@
+<resources>
+    <string name="app_name">OmniChurch</string>
+    <string name="app_subtitle_mobile">Mobile</string>
+    <string name="app_subtitle_pro">Pro</string>
+
+    <string name="auth_welcome_title">Bienvenue sur OmniChurch Pro</string>
+    <string name="auth_welcome_subtitle">Plateforme numérique officielle pour la gestion d\'église, carte membre 3D et contrôle de présence QR en temps réel.</string>
+    <string name="auth_sign_in_google">Se connecter avec Google</string>
+    <string name="auth_signing_in">Connexion en cours...</string>
+    <string name="auth_security_badge">Sécurité Multi-Tenant • Données Temps Réel</string>
+    <string name="auth_error_missing_client">Configuration Google Sign-In manquante.</string>
+    <string name="auth_error_failed">Échec de la connexion. Veuillez réessayer.</string>
+    <string name="auth_cancelled">Connexion annulée. Sélectionnez un compte Google.</string>
+    <string name="auth_sign_out">Se déconnecter</string>
+
+    <string name="setup_church_title">Configurer Votre Espace Église</string>
+    <string name="setup_church_subtitle">Votre compte est authentifié, mais aucun profil membre n\'existe encore. Rejoignez ou créez votre église.</string>
+    <string name="setup_mode_join">Rejoindre une Église</string>
+    <string name="setup_mode_create_church">Créer une Église (Admin)</string>
+    <string name="setup_church_name_label">Nom de l\'Église</string>
+    <string name="setup_church_id_label">ID de l\'Église</string>
+    <string name="setup_church_address_label">Adresse de l\'Église</string>
+    <string name="setup_member_fullname_label">Nom Complet du Membre</string>
+    <string name="setup_member_department_label">Département (ex: Adoration)</string>
+    <string name="setup_member_role_label">Rôle (ex: Musicien, Membre)</string>
+    <string name="setup_submit_button">Activer l\'Espace OmniChurch</string>
+
+    <string name="home_greeting">Bonjour, %1$s</string>
+    <string name="home_member_space">Membre Officiel</string>
+    <string name="home_admin_space">Espace Admin</string>
+    <string name="home_hero_welcome">Bienvenue sur</string>
+    <string name="home_hero_title">OmniChurch Pro</string>
+    <string name="home_hero_tagline">Votre église dans votre poche</string>
+
+    <string name="action_feed">Fil</string>
+    <string name="action_member_card">Carte Membre</string>
+    <string name="action_scan_qr">Scanner QR</string>
+    <string name="action_services">Cultes</string>
+
+    <string name="feed_section_title">Fil d\'Actualité</string>
+    <string name="feed_see_all">Tout</string>
+    <string name="feed_live_badge">EN DIRECT</string>
+    <string name="feed_official_announcement">Annonce Officielle</string>
+    <string name="feed_empty_title">Aucune Actualité Disponible</string>
+    <string name="feed_empty_subtitle">Aucun culte ou annonce officielle n\'a encore été publié pour votre église.</string>
+    <string name="feed_add_announcement">Publier Annonce</string>
+    <string name="feed_add_service">Créer Culte</string>
+    <string name="feed_react_amen">Amen</string>
+    <string name="feed_comments_title">Commentaires (%1$d)</string>
+    <string name="feed_comment_hint">Écrire un commentaire...</string>
+    <string name="feed_comment_send">Envoyer</string>
+    <string name="feed_no_comments">Aucun commentaire pour le moment.</string>
+
+    <string name="nav_home">Accueil</string>
+    <string name="nav_services">Cultes</string>
+    <string name="nav_qr_center">QR</string>
+    <string name="nav_notifications">Alertes</string>
+    <string name="nav_profile">Profil</string>
+
+    <string name="member_card_screen_title">Carte d\'Identité Membre</string>
+    <string name="member_status_active">Membre Actif</string>
+    <string name="member_status_pending">En Attente</string>
+    <string name="member_status_inactive">Inactif</string>
+    <string name="member_label_department">Département</string>
+    <string name="member_label_role">Rôle</string>
+    <string name="member_label_join_date">Date d\'Entrée</string>
+    <string name="member_id_prefix">ID Membre: %1$s</string>
+    <string name="member_id_copied">ID Membre copié !</string>
+    <string name="member_btn_qr_gallery">Galerie QR</string>
+    <string name="member_btn_qr_gallery_sub">(Plein Écran)</string>
+    <string name="member_btn_save_qr">Enregistrer QR</string>
+    <string name="member_btn_save_qr_sub">dans Galerie</string>
+    <string name="member_btn_share_card">Partager</string>
+    <string name="member_btn_share_card_sub">la Carte</string>
+    <string name="member_qr_saved_success">Code QR enregistré dans votre galerie !</string>
+    <string name="member_qr_saved_error">Erreur lors de l\'enregistrement du QR.</string>
+    <string name="member_no_card_title">Carte Membre Indisponible</string>
+    <string name="member_no_card_subtitle">Votre dossier membre ne possède pas encore de barcodeToken validé.</string>
+
+    <string name="qr_gallery_title">QR</string>
+    <string name="qr_gallery_brightness_note">Luminosité maximale activée pour une lecture rapide</string>
+    <string name="qr_gallery_offline_cached">Jeton QR Vérifié • Prêt à Scanner</string>
+    <string name="qr_gallery_close">Fermer le Plein Écran</string>
+
+    <string name="scanner_screen_title">Lecteur QR Admin</string>
+    <string name="scanner_role_admin">Admin</string>
+    <string name="scanner_role_usher">Huissier</string>
+    <string name="scanner_tab_qr">Scanner QR</string>
+    <string name="scanner_tab_manual">Code Membre</string>
+    <string name="scanner_select_service_label">Choisir Culte (Actif)</string>
+    <string name="scanner_change_service">Changer</string>
+    <string name="scanner_open_for_attendance">Ouvert aux Présences</string>
+    <string name="scanner_closed_for_attendance">Fermé aux Présences</string>
+    <string name="scanner_no_active_service">Aucun culte actif ouvert aux présences.</string>
+    <string name="scanner_manual_input_label">Entrer Code Membre ou Jeton QR</string>
+    <string name="scanner_manual_input_hint">Ex: OM-0258743</string>
+    <string name="scanner_manual_submit">Valider Présence</string>
+    <string name="scanner_camera_permission_title">Permission Caméra Requise</string>
+    <string name="scanner_camera_permission_msg">OmniChurch a besoin de la caméra pour scanner les codes QR des membres.</string>
+    <string name="scanner_grant_permission">Autoriser la Caméra</string>
+    <string name="scanner_torch_toggle">Flash</string>
+
+    <string name="attendance_registered_title">Présence Enregistrée</string>
+    <string name="attendance_status_on_time">À l\'Heure</string>
+    <string name="attendance_status_late">En Retard</string>
+    <string name="attendance_service_prefix">Culte:</string>
+    <string name="attendance_scan_next">Scanner Membre Suivant</string>
+    <string name="attendance_err_invalid_qr">Ce code QR est invalide ou introuvable.</string>
+    <string name="attendance_err_wrong_church">Ce membre appartient à une autre église.</string>
+    <string name="attendance_err_duplicate">Présence déjà enregistrée pour ce culte.</string>
+    <string name="attendance_err_service_closed">Ce culte est fermé aux présences.</string>
+    <string name="attendance_err_unauthorized">Accès non autorisé pour enregistrer les présences.</string>
+    <string name="attendance_err_network">Erreur réseau avec Firestore.</string>
+
+    <string name="services_screen_title">Cultes &amp; Présences</string>
+    <string name="services_create_title">Créer un Nouveau Culte</string>
+    <string name="services_name_label">Nom du Culte (ex: Culte du Dimanche)</string>
+    <string name="services_date_label">Date et Heure (ex: 26 Oct. 2026 • 9:00 AM)</string>
+    <string name="services_tolerance_label">Tolérance Retard (Minutes)</string>
+    <string name="services_open_toggle">Ouvert aux Présences QR</string>
+    <string name="services_live_toggle">En Direct (LIVE)</string>
+    <string name="services_save_btn">Enregistrer le Culte</string>
+    <string name="services_empty_title">Aucun Culte Enregistré</string>
+    <string name="services_empty_subtitle">Créez un culte pour activer le lecteur QR et le suivi des présences.</string>
+
+    <string name="announcement_create_title">Publier une Annonce Officielle</string>
+    <string name="announcement_title_label">Titre de l\'Annonce</string>
+    <string name="announcement_dept_label">Département</string>
+    <string name="announcement_content_label">Contenu du Message</string>
+    <string name="announcement_pinned_toggle">Épingler en haut du fil</string>
+    <string name="announcement_publish_btn">Publier Maintenant</string>
+
+    <string name="notifications_screen_title">Notifications</string>
+    <string name="notifications_mark_all_read">Tout marquer comme lu</string>
+    <string name="notifications_empty_title">Aucune Notification</string>
+    <string name="notifications_empty_subtitle">Vos alertes de cultes, annonces et présences apparaîtront ici.</string>
+
+    <string name="profile_screen_title">Profil &amp; Paramètres</string>
+    <string name="profile_language_label">Langue de l\'Application</string>
+    <string name="profile_lang_ht">Kreyòl Ayisyen</string>
+    <string name="profile_lang_fr">Français</string>
+    <string name="profile_lang_en">English</string>
+    <string name="profile_lang_es">Español</string>
+    <string name="profile_edit_section">Modifier les Informations Membre</string>
+    <string name="profile_save_changes">Enregistrer les Modifications</string>
+    <string name="profile_saved_toast">Profil mis à jour dans Firestore !</string>
+    <string name="profile_database_info">Base de Données: Named Firestore Enterprise</string>
+
+    <string name="common_cancel">Annuler</string>
+    <string name="common_close">Fermer</string>
+    <string name="common_retry">Réessayer</string>
+    <string name="common_loading">Chargement des données réelles...</string>
+</resources>

@@ -1,0 +1,153 @@
+<resources>
+    <string name="app_name">OmniChurch</string>
+    <string name="app_subtitle_mobile">Mobile</string>
+    <string name="app_subtitle_pro">Pro</string>
+
+    <string name="auth_welcome_title">Bienvenido a OmniChurch Pro</string>
+    <string name="auth_welcome_subtitle">Plataforma digital oficial para la gestión de iglesias, carnet de miembro 3D y control de asistencia QR en tiempo real.</string>
+    <string name="auth_sign_in_google">Iniciar sesión con Google</string>
+    <string name="auth_signing_in">Iniciando sesión...</string>
+    <string name="auth_security_badge">Seguridad Multi-Tenant • Datos en Tiempo Real</string>
+    <string name="auth_error_missing_client">Falta configuración de Google Sign-In.</string>
+    <string name="auth_error_failed">Error al iniciar sesión. Inténtelo de nuevo.</string>
+    <string name="auth_cancelled">Inicio cancelado. Seleccione una cuenta de Google.</string>
+    <string name="auth_sign_out">Cerrar Sesión</string>
+
+    <string name="setup_church_title">Configurar Espacio de Iglesia</string>
+    <string name="setup_church_subtitle">Su cuenta está conectada, pero aún no tiene un perfil de miembro en OmniChurch Pro. Únase o cree su iglesia.</string>
+    <string name="setup_mode_join">Unirse a una Iglesia</string>
+    <string name="setup_mode_create_church">Crear Iglesia (Admin)</string>
+    <string name="setup_church_name_label">Nombre de la Iglesia</string>
+    <string name="setup_church_id_label">ID de la Iglesia</string>
+    <string name="setup_church_address_label">Dirección de la Iglesia</string>
+    <string name="setup_member_fullname_label">Nombre Completo del Miembro</string>
+    <string name="setup_member_department_label">Departamento (ej: Alabanza)</string>
+    <string name="setup_member_role_label">Rol (ej: Músico, Miembro)</string>
+    <string name="setup_submit_button">Activar Espacio OmniChurch</string>
+
+    <string name="home_greeting">Hola, %1$s</string>
+    <string name="home_member_space">Miembro Oficial</string>
+    <string name="home_admin_space">Espacio Admin</string>
+    <string name="home_hero_welcome">Bienvenido a</string>
+    <string name="home_hero_title">OmniChurch Pro</string>
+    <string name="home_hero_tagline">La iglesia en tu bolsillo</string>
+
+    <string name="action_feed">Noticias</string>
+    <string name="action_member_card">Carnet</string>
+    <string name="action_scan_qr">Escanear QR</string>
+    <string name="action_services">Servicios</string>
+
+    <string name="feed_section_title">Noticias en Vivo</string>
+    <string name="feed_see_all">Todo</string>
+    <string name="feed_live_badge">EN VIVO</string>
+    <string name="feed_official_announcement">Anuncio Oficial</string>
+    <string name="feed_empty_title">Sin Noticias Disponibles</string>
+    <string name="feed_empty_subtitle">Aún no se han publicado servicios ni anuncios oficiales para su iglesia.</string>
+    <string name="feed_add_announcement">Publicar Anuncio</string>
+    <string name="feed_add_service">Crear Servicio</string>
+    <string name="feed_react_amen">Amén</string>
+    <string name="feed_comments_title">Comentarios (%1$d)</string>
+    <string name="feed_comment_hint">Escribe un comentario...</string>
+    <string name="feed_comment_send">Enviar</string>
+    <string name="feed_no_comments">Sin comentarios aún.</string>
+
+    <string name="nav_home">Inicio</string>
+    <string name="nav_services">Servicios</string>
+    <string name="nav_qr_center">QR</string>
+    <string name="nav_notifications">Alertas</string>
+    <string name="nav_profile">Perfil</string>
+
+    <string name="member_card_screen_title">Carnet de Identidad</string>
+    <string name="member_status_active">Miembro Activo</string>
+    <string name="member_status_pending">Pendiente</string>
+    <string name="member_status_inactive">Inactivo</string>
+    <string name="member_label_department">Departamento</string>
+    <string name="member_label_role">Rol</string>
+    <string name="member_label_join_date">Fecha de Ingreso</string>
+    <string name="member_id_prefix">ID Miembro: %1$s</string>
+    <string name="member_id_copied">¡ID de Miembro copiado!</string>
+    <string name="member_btn_qr_gallery">Galería QR</string>
+    <string name="member_btn_qr_gallery_sub">(Pantalla Completa)</string>
+    <string name="member_btn_save_qr">Guardar QR</string>
+    <string name="member_btn_save_qr_sub">en Galería</string>
+    <string name="member_btn_share_card">Compartir</string>
+    <string name="member_btn_share_card_sub">Carnet</string>
+    <string name="member_qr_saved_success">¡Código QR guardado en la Galería!</string>
+    <string name="member_qr_saved_error">Error al guardar el código QR.</string>
+    <string name="member_no_card_title">Carnet No Disponible</string>
+    <string name="member_no_card_subtitle">Su perfil de miembro aún no tiene un barcodeToken verificado.</string>
+
+    <string name="qr_gallery_title">QR</string>
+    <string name="qr_gallery_brightness_note">Brillo máximo activado para escaneo rápido</string>
+    <string name="qr_gallery_offline_cached">Token QR Verificado • Listo para Escanear</string>
+    <string name="qr_gallery_close">Salir de Pantalla Completa</string>
+
+    <string name="scanner_screen_title">Lector QR Admin</string>
+    <string name="scanner_role_admin">Admin</string>
+    <string name="scanner_role_usher">Ujier</string>
+    <string name="scanner_tab_qr">Escanear QR</string>
+    <string name="scanner_tab_manual">Código Manual</string>
+    <string name="scanner_select_service_label">Elegir Servicio (Activo)</string>
+    <string name="scanner_change_service">Cambiar</string>
+    <string name="scanner_open_for_attendance">Abierto para Asistencia</string>
+    <string name="scanner_closed_for_attendance">Cerrado para Asistencia</string>
+    <string name="scanner_no_active_service">No hay servicios activos abiertos para asistencia.</string>
+    <string name="scanner_manual_input_label">Ingresar Código de Miembro o Token QR</string>
+    <string name="scanner_manual_input_hint">Ej: OM-0258743</string>
+    <string name="scanner_manual_submit">Validar Asistencia</string>
+    <string name="scanner_camera_permission_title">Permiso de Cámara Requerido</string>
+    <string name="scanner_camera_permission_msg">OmniChurch necesita acceso a la cámara para escanear códigos QR.</string>
+    <string name="scanner_grant_permission">Permitir Cámara</string>
+    <string name="scanner_torch_toggle">Linterna</string>
+
+    <string name="attendance_registered_title">Asistencia Registrada</string>
+    <string name="attendance_status_on_time">A Tiempo</string>
+    <string name="attendance_status_late">Tarde</string>
+    <string name="attendance_service_prefix">Servicio:</string>
+    <string name="attendance_scan_next">Escanear Siguiente Miembro</string>
+    <string name="attendance_err_invalid_qr">Código QR inválido o miembro no encontrado.</string>
+    <string name="attendance_err_wrong_church">El miembro pertenece a otra iglesia.</string>
+    <string name="attendance_err_duplicate">La asistencia ya fue registrada para este servicio.</string>
+    <string name="attendance_err_service_closed">El servicio está cerrado para asistencia.</string>
+    <string name="attendance_err_unauthorized">No autorizado para registrar asistencia.</string>
+    <string name="attendance_err_network">Error de red con Firestore.</string>
+
+    <string name="services_screen_title">Servicios y Asistencia</string>
+    <string name="services_create_title">Crear Nuevo Servicio</string>
+    <string name="services_name_label">Nombre del Servicio (ej: Servicio Dominical)</string>
+    <string name="services_date_label">Fecha y Hora (ej: 26 Oct. 2026 • 9:00 AM)</string>
+    <string name="services_tolerance_label">Tolerancia de Retraso (Minutos)</string>
+    <string name="services_open_toggle">Abierto para Asistencia QR</string>
+    <string name="services_live_toggle">En Vivo (LIVE)</string>
+    <string name="services_save_btn">Guardar Servicio</string>
+    <string name="services_empty_title">Sin Servicios Registrados</string>
+    <string name="services_empty_subtitle">Cree un servicio para activar el escáner QR y el cálculo de puntualidad.</string>
+
+    <string name="announcement_create_title">Publicar Anuncio Oficial</string>
+    <string name="announcement_title_label">Título del Anuncio</string>
+    <string name="announcement_dept_label">Departamento</string>
+    <string name="announcement_content_label">Mensaje del Anuncio</string>
+    <string name="announcement_pinned_toggle">Fijar en la parte superior</string>
+    <string name="announcement_publish_btn">Publicar Ahora</string>
+
+    <string name="notifications_screen_title">Notificaciones</string>
+    <string name="notifications_mark_all_read">Marcar todo como leído</string>
+    <string name="notifications_empty_title">Sin Notificaciones</string>
+    <string name="notifications_empty_subtitle">Sus alertas de servicios, anuncios y asistencias aparecerán aquí.</string>
+
+    <string name="profile_screen_title">Perfil y Ajustes</string>
+    <string name="profile_language_label">Idioma de la Aplicación</string>
+    <string name="profile_lang_ht">Kreyòl Ayisyen</string>
+    <string name="profile_lang_fr">Français</string>
+    <string name="profile_lang_en">English</string>
+    <string name="profile_lang_es">Español</string>
+    <string name="profile_edit_section">Editar Información de Miembro</string>
+    <string name="profile_save_changes">Guardar Cambios</string>
+    <string name="profile_saved_toast">¡Perfil actualizado en Firestore!</string>
+    <string name="profile_database_info">Base de Datos: Named Firestore Enterprise</string>
+
+    <string name="common_cancel">Cancelar</string>
+    <string name="common_close">Cerrar</string>
+    <string name="common_retry">Reintentar</string>
+    <string name="common_loading">Cargando datos reales...</string>
+</resources>

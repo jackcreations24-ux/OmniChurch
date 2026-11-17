@@ -1,0 +1,153 @@
+<resources>
+    <string name="app_name">OmniChurch</string>
+    <string name="app_subtitle_mobile">Mobile</string>
+    <string name="app_subtitle_pro">Pro</string>
+
+    <string name="auth_welcome_title">Welcome to OmniChurch Pro</string>
+    <string name="auth_welcome_subtitle">Official digital companion for church management, 3D member ID cards, and real-time QR attendance verification.</string>
+    <string name="auth_sign_in_google">Sign in with Google</string>
+    <string name="auth_signing_in">Signing in...</string>
+    <string name="auth_security_badge">Multi-Tenant Security • Real-Time Data</string>
+    <string name="auth_error_missing_client">Google Sign-In configuration missing: default_web_client_id not found.</string>
+    <string name="auth_error_failed">Sign in failed. Please try again.</string>
+    <string name="auth_cancelled">Sign-in cancelled. Select a Google account to continue.</string>
+    <string name="auth_sign_out">Sign Out</string>
+
+    <string name="setup_church_title">Configure Your Church Space</string>
+    <string name="setup_church_subtitle">Your account is authenticated, but no member record exists in OmniChurch Pro yet. Join an existing church or create your church tenant.</string>
+    <string name="setup_mode_join">Join a Church</string>
+    <string name="setup_mode_create_church">Create Church (Admin)</string>
+    <string name="setup_church_name_label">Church Name</string>
+    <string name="setup_church_id_label">Church ID (If joining existing)</string>
+    <string name="setup_church_address_label">Church Address</string>
+    <string name="setup_member_fullname_label">Member Full Name</string>
+    <string name="setup_member_department_label">Department (e.g. Worship)</string>
+    <string name="setup_member_role_label">Role (e.g. Musician, Member)</string>
+    <string name="setup_submit_button">Activate OmniChurch Space</string>
+
+    <string name="home_greeting">Hello, %1$s</string>
+    <string name="home_member_space">Official Member</string>
+    <string name="home_admin_space">Admin Space</string>
+    <string name="home_hero_welcome">Welcome to</string>
+    <string name="home_hero_title">OmniChurch Pro</string>
+    <string name="home_hero_tagline">Your church in your pocket</string>
+
+    <string name="action_feed">Feed</string>
+    <string name="action_member_card">Member ID</string>
+    <string name="action_scan_qr">Scan QR</string>
+    <string name="action_services">Services</string>
+
+    <string name="feed_section_title">Live Feed</string>
+    <string name="feed_see_all">All</string>
+    <string name="feed_live_badge">LIVE</string>
+    <string name="feed_official_announcement">Official Announcement</string>
+    <string name="feed_empty_title">No Feed Updates Yet</string>
+    <string name="feed_empty_subtitle">No worship services or official announcements have been published for your church yet.</string>
+    <string name="feed_add_announcement">Post Announcement</string>
+    <string name="feed_add_service">Create Service</string>
+    <string name="feed_react_amen">Amen</string>
+    <string name="feed_comments_title">Comments (%1$d)</string>
+    <string name="feed_comment_hint">Write a comment...</string>
+    <string name="feed_comment_send">Send</string>
+    <string name="feed_no_comments">No comments yet. Be the first to respond!</string>
+
+    <string name="nav_home">Home</string>
+    <string name="nav_services">Services</string>
+    <string name="nav_qr_center">QR</string>
+    <string name="nav_notifications">Alerts</string>
+    <string name="nav_profile">Profile</string>
+
+    <string name="member_card_screen_title">Digital Member ID</string>
+    <string name="member_status_active">Active Member</string>
+    <string name="member_status_pending">Pending</string>
+    <string name="member_status_inactive">Inactive</string>
+    <string name="member_label_department">Department</string>
+    <string name="member_label_role">Role</string>
+    <string name="member_label_join_date">Joined Date</string>
+    <string name="member_id_prefix">Member ID: %1$s</string>
+    <string name="member_id_copied">Member ID copied!</string>
+    <string name="member_btn_qr_gallery">QR Gallery</string>
+    <string name="member_btn_qr_gallery_sub">(Full Screen)</string>
+    <string name="member_btn_save_qr">Save QR</string>
+    <string name="member_btn_save_qr_sub">to Gallery</string>
+    <string name="member_btn_share_card">Share</string>
+    <string name="member_btn_share_card_sub">ID Card</string>
+    <string name="member_qr_saved_success">QR Code saved to your Android Gallery!</string>
+    <string name="member_qr_saved_error">Failed to save QR image.</string>
+    <string name="member_no_card_title">Member Card Unavailable</string>
+    <string name="member_no_card_subtitle">Your member profile does not yet have a verified barcodeToken in Firestore.</string>
+
+    <string name="qr_gallery_title">QR</string>
+    <string name="qr_gallery_brightness_note">Maximum screen brightness active for fast scanning</string>
+    <string name="qr_gallery_offline_cached">Verified QR Token • Ready to Scan</string>
+    <string name="qr_gallery_close">Exit Full Screen</string>
+
+    <string name="scanner_screen_title">Admin QR Scanner</string>
+    <string name="scanner_role_admin">Admin</string>
+    <string name="scanner_role_usher">Usher</string>
+    <string name="scanner_tab_qr">Scan QR</string>
+    <string name="scanner_tab_manual">Enter Member Code</string>
+    <string name="scanner_select_service_label">Select Active Service</string>
+    <string name="scanner_change_service">Change</string>
+    <string name="scanner_open_for_attendance">Open for Attendance</string>
+    <string name="scanner_closed_for_attendance">Closed for Attendance</string>
+    <string name="scanner_no_active_service">No active services open for attendance right now.</string>
+    <string name="scanner_manual_input_label">Enter Member Code or QR Token</string>
+    <string name="scanner_manual_input_hint">e.g. OM-0258743</string>
+    <string name="scanner_manual_submit">Verify Attendance</string>
+    <string name="scanner_camera_permission_title">Camera Permission Required</string>
+    <string name="scanner_camera_permission_msg">OmniChurch requires camera access to scan member QR codes in real time.</string>
+    <string name="scanner_grant_permission">Grant Camera Access</string>
+    <string name="scanner_torch_toggle">Flashlight</string>
+
+    <string name="attendance_registered_title">Attendance Recorded</string>
+    <string name="attendance_status_on_time">On Time</string>
+    <string name="attendance_status_late">Late</string>
+    <string name="attendance_service_prefix">Service:</string>
+    <string name="attendance_scan_next">Scan Next Member</string>
+    <string name="attendance_err_invalid_qr">Invalid QR code or member not found.</string>
+    <string name="attendance_err_wrong_church">Member belongs to a different church tenant.</string>
+    <string name="attendance_err_duplicate">Attendance already recorded for this service.</string>
+    <string name="attendance_err_service_closed">Selected service is closed for attendance.</string>
+    <string name="attendance_err_unauthorized">Unauthorized: Admin or Usher privileges required.</string>
+    <string name="attendance_err_network">Network error communicating with Firestore.</string>
+
+    <string name="services_screen_title">Services &amp; Attendance</string>
+    <string name="services_create_title">Create New Service</string>
+    <string name="services_name_label">Service Title (e.g. Sunday Service)</string>
+    <string name="services_date_label">Date &amp; Time (e.g. Oct 26, 2026 • 9:00 AM)</string>
+    <string name="services_tolerance_label">Late Tolerance (Minutes)</string>
+    <string name="services_open_toggle">Open for QR Attendance</string>
+    <string name="services_live_toggle">Streaming Live (LIVE)</string>
+    <string name="services_save_btn">Save Service</string>
+    <string name="services_empty_title">No Services Found</string>
+    <string name="services_empty_subtitle">Create a worship service to enable QR scanning and on-time/late tracking.</string>
+
+    <string name="announcement_create_title">Publish Official Announcement</string>
+    <string name="announcement_title_label">Announcement Title</string>
+    <string name="announcement_dept_label">Department</string>
+    <string name="announcement_content_label">Announcement Message</string>
+    <string name="announcement_pinned_toggle">Pin to top of Live Feed</string>
+    <string name="announcement_publish_btn">Publish Now</string>
+
+    <string name="notifications_screen_title">Notifications</string>
+    <string name="notifications_mark_all_read">Mark all as read</string>
+    <string name="notifications_empty_title">No Notifications</string>
+    <string name="notifications_empty_subtitle">Alerts for new services, official announcements, and attendance check-ins will appear here.</string>
+
+    <string name="profile_screen_title">Profile &amp; Settings</string>
+    <string name="profile_language_label">Application Language</string>
+    <string name="profile_lang_ht">Kreyòl Ayisyen</string>
+    <string name="profile_lang_fr">Français</string>
+    <string name="profile_lang_en">English</string>
+    <string name="profile_lang_es">Español</string>
+    <string name="profile_edit_section">Edit Member Information</string>
+    <string name="profile_save_changes">Save Changes</string>
+    <string name="profile_saved_toast">Profile updated in Firestore!</string>
+    <string name="profile_database_info">Database: Named Firestore Enterprise</string>
+
+    <string name="common_cancel">Cancel</string>
+    <string name="common_close">Close</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_loading">Loading real data...</string>
+</resources>
