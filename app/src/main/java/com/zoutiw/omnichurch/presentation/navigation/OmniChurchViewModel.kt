@@ -58,6 +58,18 @@ class OmniChurchViewModel(
     currentUserPhotoUrl = currentUserPhotoUrl,
   )
 
+  private val activeAuthUidFlow = MutableStateFlow(currentUserId.trim())
+
+  fun syncAuthIdentity(uid: String) {
+    val cleanUid = uid.trim()
+    if (activeAuthUidFlow.value != cleanUid) {
+      activeAuthUidFlow.value = cleanUid
+    }
+  }
+
+  private fun effectiveActorUid(): String =
+    activeAuthUidFlow.value.ifBlank { currentUserId }.trim()
+
   val sessionState: StateFlow<OmniSessionState> =
     preferencesManager.sessionStateFlow.stateIn(
       scope = viewModelScope,
@@ -73,7 +85,9 @@ class OmniChurchViewModel(
     )
 
   val firestoreUserProfileFlow: Flow<UserProfile?> =
-    if (currentUserId.isBlank()) flowOf(null) else repository.observeUserProfile(currentUserId)
+    activeAuthUidFlow.flatMapLatest { uid ->
+      if (uid.isBlank()) flowOf(null) else repository.observeUserProfile(uid)
+    }
 
   val userProfileState: StateFlow<UiState<UserProfile?>> =
     firestoreUserProfileFlow.map { profile ->
@@ -188,7 +202,7 @@ class OmniChurchViewModel(
         val countsByType = targetReactions.groupBy { OmniReactionType.fromKey(it.reactionType) }
           .mapValues { it.value.size }
         val topTypes = countsByType.entries.sortedByDescending { it.value }.map { it.key }.take(3)
-        val myReactionObj = targetReactions.firstOrNull { it.userId == currentUserId }
+        val myReactionObj = targetReactions.firstOrNull { it.userId == effectiveActorUid() }
         val myType = optimisticMap[targetId] ?: myReactionObj?.let { OmniReactionType.fromKey(it.reactionType) }
         result[targetId] = TargetReactionSummary(
           totalCount = totalCount,
@@ -213,16 +227,17 @@ class OmniChurchViewModel(
     )
 
   val notificationsState: StateFlow<UiState<List<ChurchNotification>>> =
-    activeChurchIdFlow.flatMapLatest { churchId ->
-      repository.observeNotifications(currentUserId, churchId)
-        .map { UiState.Success(it) as UiState<List<ChurchNotification>> }
-    }.catch { _ ->
-      emit(UiState.Success(emptyList()))
-    }.stateIn(
-      scope = viewModelScope,
-      started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-      initialValue = UiState.Loading,
-    )
+    combine(activeChurchIdFlow, activeAuthUidFlow) { churchId, uid -> churchId to uid }
+      .flatMapLatest { (churchId, uid) ->
+        repository.observeNotifications(uid, churchId)
+          .map { UiState.Success(it) as UiState<List<ChurchNotification>> }
+      }.catch { _ ->
+        emit(UiState.Success(emptyList()))
+      }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = UiState.Loading,
+      )
 
   val cachedOfflineQrToken: StateFlow<String?> =
     preferencesManager.cachedQrTokenFlow.stateIn(
@@ -485,6 +500,7 @@ class OmniChurchViewModel(
 
   fun logoutCurrentSession(onSuccess: () -> Unit) {
     viewModelScope.launch {
+      activeAuthUidFlow.value = ""
       preferencesManager.clearActiveSession()
       onSuccess()
     }
@@ -538,15 +554,24 @@ class OmniChurchViewModel(
 
   fun signInAdminWithEmailAndPassword(
     email: String,
-    passcode: String,
-    onSuccess: () -> Unit,
-    onError: (String) -> Unit,
+    password: String,
+    selectedChurchId: String? = null,
+    onSuccess: () -> Unit = {},
+    onError: (String) -> Unit = {},
   ) {
     if (_isAuthenticating.value) return
     viewModelScope.launch {
       _isAuthenticating.value = true
-      repository.signInAdminWithEmailAndPassword(email, passcode)
+      repository.signInAdminWithEmailAndPassword(
+        email = email,
+        password = password,
+        selectedChurchId = selectedChurchId,
+      )
         .onSuccess { church ->
+          val signedInUid = repository.currentAuthUid()
+          if (signedInUid.isNotBlank()) {
+            activeAuthUidFlow.value = signedInUid
+          }
           preferencesManager.saveAuthenticatedSession(
             activeChurchId = church.id,
             activeRole = "admin",
@@ -560,6 +585,30 @@ class OmniChurchViewModel(
         .onFailure { err ->
           _isAuthenticating.value = false
           val msg = err.localizedMessage ?: "Imèl oswa modpas la pa kòrèk."
+          _actionFeedbackMessage.value = msg
+          onError(msg)
+        }
+    }
+  }
+
+  fun sendAdminPasswordResetEmail(
+    email: String,
+    onSuccess: (String) -> Unit,
+    onError: (String) -> Unit,
+  ) {
+    if (_isAuthenticating.value) return
+    viewModelScope.launch {
+      _isAuthenticating.value = true
+      repository.sendAdminPasswordResetEmail(email)
+        .onSuccess {
+          _isAuthenticating.value = false
+          onSuccess(
+            "Nou voye yon lyen pou reyinisyalize modpas la nan imèl ${email.trim().lowercase()}."
+          )
+        }
+        .onFailure { err ->
+          _isAuthenticating.value = false
+          val msg = err.localizedMessage ?: "Nou pa t kapab voye lyen an."
           _actionFeedbackMessage.value = msg
           onError(msg)
         }
@@ -630,7 +679,7 @@ class OmniChurchViewModel(
         isOpenForAttendance = isOpenForAttendance,
         isLive = isLive,
         authorName = authorName,
-        actorId = currentUserId,
+        actorId = effectiveActorUid(),
         category = category,
         date = date,
         startTime = startTime,
@@ -737,7 +786,7 @@ class OmniChurchViewModel(
         department = "Depatman Administrasyon",
         isPinned = isPinned,
         authorName = authorName,
-        actorId = currentUserId,
+        actorId = effectiveActorUid(),
         category = category,
         date = date,
         targetAudience = targetAudience,
@@ -778,7 +827,7 @@ class OmniChurchViewModel(
         churchId = churchId,
         userName = userName,
         reactionType = reactionType.key,
-        actorId = currentUserId,
+        actorId = effectiveActorUid(),
         isCommentTarget = isCommentTarget,
       )
     }
@@ -801,7 +850,7 @@ class OmniChurchViewModel(
         userName = currentUserProfile.displayName,
         userPhotoUrl = currentUserProfile.photoUrl,
         content = content,
-        actorId = currentUserId,
+        actorId = effectiveActorUid(),
       )
     }
   }
@@ -811,7 +860,18 @@ class OmniChurchViewModel(
     selectedService: ChurchService,
     checkInMethod: String = "qr_scanner",
   ) {
-    val profile = (userProfileState.value as? UiState.Success)?.data ?: return
+    val session = sessionState.value
+    val profile =
+      (userProfileState.value as? UiState.Success)?.data
+        ?: run {
+          if (!session.isAuthenticated) return
+          UserProfile(
+            userId = effectiveActorUid().ifBlank { "matrikil_pin_session" },
+            role = session.activeRole.ifBlank { "admin" },
+            churchId = session.activeChurchId.ifBlank { selectedService.churchId },
+            displayName = "Admin Scanner",
+          )
+        }
     if (_scannerOutcome.value is ScannerValidationOutcome.Processing) return
     _scannerOutcome.value = ScannerValidationOutcome.Processing
     viewModelScope.launch {
@@ -822,6 +882,26 @@ class OmniChurchViewModel(
         checkInMethod = checkInMethod,
       )
       _scannerOutcome.value = outcome
+    }
+  }
+
+  fun bindNfcCardToMember(
+    memberDocId: String,
+    nfcCardUid: String,
+    onSuccess: () -> Unit = {},
+    onError: (String) -> Unit = {},
+  ) {
+    viewModelScope.launch {
+      repository.bindNfcCardUidToMember(memberDocId, nfcCardUid)
+        .onSuccess {
+          _actionFeedbackMessage.value = "Kat NFC la lye ak manm nan avèk siksè!"
+          onSuccess()
+        }
+        .onFailure { err ->
+          val msg = err.localizedMessage ?: "Erè pandan lyezon kat NFC a."
+          _actionFeedbackMessage.value = msg
+          onError(msg)
+        }
     }
   }
 

@@ -1,5 +1,9 @@
 package com.zoutiw.omnichurch.presentation.components
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,12 +26,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.NotificationImportant
+import androidx.compose.material.icons.filled.PinDrop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,25 +51,36 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.zoutiw.omnichurch.core.utilities.ImageCompressor
+import com.zoutiw.omnichurch.data.models.Announcement
 import com.zoutiw.omnichurch.data.models.ChurchService
 import com.zoutiw.omnichurch.ui.theme.PureWhite
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
+/**
+ * Modern Minimalist Bottom Sheet pou kreyasyon ak piblikasyon Anons (Announcements).
+ * Design anti-slop: 100% linear flow san bòdi lou, seleksyon kategori/odyans rapid,
+ * nivo alèt toast, ak opsyon avanse.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateAnnouncementBottomSheet(
   onDismissRequest: () -> Unit,
   availableServices: List<ChurchService> = emptyList(),
+  initialAnnouncement: Announcement? = null,
   onSubmit: (
     title: String,
     content: String,
@@ -78,6 +99,8 @@ fun CreateAnnouncementBottomSheet(
   modifier: Modifier = Modifier,
 ) {
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+  val context = LocalContext.current
+  val scope = rememberCoroutineScope()
 
   val categories = listOf(
     "anons" to "Anons Jeneral",
@@ -98,27 +121,98 @@ fun CreateAnnouncementBottomSheet(
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
   }
 
-  var selectedCategory by remember { mutableStateOf("anons") }
-  var selectedAudience by remember { mutableStateOf("Tout moun") }
-  var selectedAlertLevel by remember { mutableStateOf("info") }
+  val isEditing = initialAnnouncement != null
+  val editKey = initialAnnouncement?.id ?: "new_announcement"
+  val initialCat = remember(editKey) {
+    val raw = initialAnnouncement?.category.orEmpty()
+    if (categories.any { it.first == raw }) raw else "anons"
+  }
+  val initialAud = remember(editKey) {
+    val raw = initialAnnouncement?.targetAudience.orEmpty()
+    if (raw in audiences) raw else "Tout moun"
+  }
+  val initialAlert = remember(editKey) {
+    val raw = initialAnnouncement?.toastAlertLevel.orEmpty()
+    if (alertLevels.any { it.first == raw }) raw else "info"
+  }
 
-  var title by remember { mutableStateOf("") }
-  var content by remember { mutableStateOf("") }
-  var department by remember { mutableStateOf("Depatman Administrasyon") }
-  var date by remember { mutableStateOf(todayDate) }
-  var isPinned by remember { mutableStateOf(true) }
-  var showToastOnLogin by remember { mutableStateOf(false) }
-  var isScheduledNotification by remember { mutableStateOf(false) }
-  var scheduledNotificationDate by remember { mutableStateOf(todayDate) }
-  var posterUrl by remember { mutableStateOf("") }
-  var selectedServiceId by remember { mutableStateOf<String?>(null) }
+  var selectedCategory by remember(editKey) { mutableStateOf(initialCat) }
+  var selectedAudience by remember(editKey) { mutableStateOf(initialAud) }
+  var selectedAlertLevel by remember(editKey) { mutableStateOf(initialAlert) }
 
-  var showAdvancedOptions by remember { mutableStateOf(false) }
+  var title by remember(editKey) { mutableStateOf(initialAnnouncement?.title.orEmpty()) }
+  var content by remember(editKey) { mutableStateOf(initialAnnouncement?.content.orEmpty()) }
+  var department by remember(editKey) {
+    mutableStateOf(
+      initialAnnouncement?.department?.ifBlank { "Depatman Administrasyon" }
+        ?: "Depatman Administrasyon"
+    )
+  }
+  var date by remember(editKey) {
+    mutableStateOf(initialAnnouncement?.date?.takeIf { it.isNotBlank() } ?: todayDate)
+  }
+  var isPinned by remember(editKey) { mutableStateOf(initialAnnouncement?.isPinned ?: true) }
+  var showToastOnLogin by remember(editKey) {
+    mutableStateOf(initialAnnouncement?.showToastOnLogin ?: false)
+  }
+  var isScheduledNotification by remember(editKey) {
+    mutableStateOf(initialAnnouncement?.isScheduledNotification ?: false)
+  }
+  var scheduledNotificationDate by remember(editKey) {
+    mutableStateOf(
+      initialAnnouncement?.scheduledNotificationDate?.takeIf { it.isNotBlank() } ?: todayDate
+    )
+  }
+  var posterUrl by remember(editKey) {
+    mutableStateOf(initialAnnouncement?.effectiveImageUrl.orEmpty())
+  }
+  var isCompressingPoster by remember { mutableStateOf(false) }
+  var selectedServiceId by remember(editKey) {
+    mutableStateOf<String?>(initialAnnouncement?.serviceId)
+  }
+
+  var showAdvancedOptions by remember(editKey) {
+    mutableStateOf(
+      initialAnnouncement != null &&
+        (!initialAnnouncement.serviceId.isNullOrBlank() ||
+          (!initialAnnouncement.effectiveImageUrl.isNullOrBlank() &&
+            !initialAnnouncement.effectiveImageUrl!!.startsWith("data:", ignoreCase = true)))
+    )
+  }
+
+  val photoPickerLauncher =
+    rememberLauncherForActivityResult(
+      contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+      if (uri != null) {
+        isCompressingPoster = true
+        scope.launch {
+          val compressedRes =
+            ImageCompressor.compressUriToBase64(
+              context = context,
+              uri = uri,
+              maxDimension = 900,
+              quality = 80,
+            )
+          isCompressingPoster = false
+          compressedRes
+            .onSuccess { dataUrl -> posterUrl = dataUrl }
+            .onFailure { err ->
+              Toast.makeText(
+                  context,
+                  err.localizedMessage ?: "Erè pandan chajman imaj la.",
+                  Toast.LENGTH_SHORT,
+                )
+                .show()
+            }
+        }
+      }
+    }
 
   ModalBottomSheet(
     onDismissRequest = onDismissRequest,
     sheetState = sheetState,
-    containerColor = Color(0xFF0F172A),
+    containerColor = Color(0xFF0F172A), // Slate-900
     contentColor = PureWhite,
     dragHandle = {
       Box(
@@ -126,7 +220,7 @@ fun CreateAnnouncementBottomSheet(
           .padding(top = 12.dp, bottom = 8.dp)
           .size(width = 48.dp, height = 5.dp)
           .clip(CircleShape)
-          .background(Color(0xFF334155))
+          .background(Color(0xFF334155)) // Slate-700
       )
     },
     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -137,6 +231,7 @@ fun CreateAnnouncementBottomSheet(
         .fillMaxWidth()
         .heightIn(max = 680.dp)
     ) {
+      // Header Section
       Row(
         modifier = Modifier
           .fillMaxWidth()
@@ -144,15 +239,17 @@ fun CreateAnnouncementBottomSheet(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
       ) {
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
           Text(
-            text = "Pibliye yon Nouvo Anons",
+            text = if (isEditing) "Modifye Anons la" else "Pibliye yon Nouvo Anons",
             style = MaterialTheme.typography.titleLarge,
             color = PureWhite,
             fontWeight = FontWeight.Bold,
           )
           Text(
-            text = "Parèt sou fil aktyalite a e sou tablodbò Web la imedyatman",
+            text =
+              if (isEditing) "Mizajou kontni an ap parèt imedyatman pou tout manm"
+              else "Parèt sou fil aktyalite a e sou tablodbò Web la imedyatman",
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF94A3B8),
           )
@@ -169,6 +266,7 @@ fun CreateAnnouncementBottomSheet(
         }
       }
 
+      // Scrollable Linear Flow (Zero nested cards)
       Column(
         modifier = Modifier
           .weight(1f, fill = false)
@@ -176,6 +274,7 @@ fun CreateAnnouncementBottomSheet(
           .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
       ) {
+        // 1. Kategori Anons
         SectionTitle(title = "Kategori Anons")
         Row(
           modifier = Modifier.fillMaxWidth(),
@@ -191,6 +290,7 @@ fun CreateAnnouncementBottomSheet(
           }
         }
 
+        // 2. Enfòmasyon Prensipal
         SectionTitle(title = "Kontni Anons la")
         MinimalTextField(
           value = title,
@@ -221,6 +321,7 @@ fun CreateAnnouncementBottomSheet(
           testTag = "announcement_input_content",
         )
 
+        // 3. Odyans Sib (Target Audience)
         SectionTitle(title = "Odyans Sib")
         Row(
           modifier = Modifier.fillMaxWidth(),
@@ -236,6 +337,7 @@ fun CreateAnnouncementBottomSheet(
           }
         }
 
+        // 4. Optsyon Ijan & Pop-up
         SectionTitle(title = "Opsyon Piblikasyon & Alèt")
 
         Row(
@@ -351,6 +453,84 @@ fun CreateAnnouncementBottomSheet(
           }
         }
 
+        // 5. Imaj / Afich Anons (Potre oswa Peyizaj)
+        SectionTitle(title = "Imaj / Afich (Potre oswa Peyizaj)")
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Box(
+            modifier =
+              Modifier.weight(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF1E293B))
+                .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.65f), RoundedCornerShape(12.dp))
+                .clickable(enabled = !isCompressingPoster) {
+                  photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                  )
+                }
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+                .testTag("announcement_pick_image_btn"),
+            contentAlignment = Alignment.Center,
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              if (isCompressingPoster) {
+                CircularProgressIndicator(
+                  color = Color(0xFF38BDF8),
+                  strokeWidth = 2.dp,
+                  modifier = Modifier.size(18.dp),
+                )
+              } else {
+                Icon(
+                  imageVector = Icons.Default.AddPhotoAlternate,
+                  contentDescription = "Chwazi Imaj",
+                  tint = Color(0xFF38BDF8),
+                  modifier = Modifier.size(20.dp),
+                )
+              }
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text =
+                  if (posterUrl.isNotBlank()) "Chanje Imaj (Potre / Peyizaj)"
+                  else "Chwazi Imaj (Potre / Peyizaj)",
+                style = MaterialTheme.typography.bodySmall,
+                color = PureWhite,
+                fontWeight = FontWeight.SemiBold,
+              )
+            }
+          }
+
+          if (posterUrl.isNotBlank()) {
+            IconButton(
+              onClick = { posterUrl = "" },
+              modifier =
+                Modifier.size(44.dp)
+                  .clip(RoundedCornerShape(12.dp))
+                  .background(Color(0xFFEF4444).copy(alpha = 0.18f))
+                  .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.65f), RoundedCornerShape(12.dp))
+                  .testTag("announcement_clear_image_btn"),
+            ) {
+              Icon(
+                imageVector = Icons.Default.DeleteOutline,
+                contentDescription = "Retire Imaj",
+                tint = Color(0xFFEF4444),
+              )
+            }
+          }
+        }
+
+        if (posterUrl.isNotBlank()) {
+          AnnouncementMediaShowcase(
+            imageSource = posterUrl,
+            title = title.ifBlank { "Afich Anons" },
+            announcementId = "preview",
+            onImageClick = {},
+          )
+        }
+
+        // Toggle plis detay (Lyen URL dirèk ak Sèvis)
         Row(
           modifier = Modifier
             .fillMaxWidth()
@@ -360,7 +540,9 @@ fun CreateAnnouncementBottomSheet(
           horizontalArrangement = Arrangement.SpaceBetween,
         ) {
           Text(
-            text = if (showAdvancedOptions) "Kache lyen & afich ▲" else "Ajoute afich oswa lye ak yon sèvis ▼",
+            text =
+              if (showAdvancedOptions) "Kache lyen URL & sèvis ▲"
+              else "Mete lyen URL dirèk oswa lye ak yon sèvis ▼",
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF38BDF8),
             fontWeight = FontWeight.SemiBold,
@@ -370,7 +552,7 @@ fun CreateAnnouncementBottomSheet(
         AnimatedVisibility(visible = showAdvancedOptions) {
           Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             MinimalTextField(
-              value = posterUrl,
+              value = if (posterUrl.startsWith("data:", ignoreCase = true)) "" else posterUrl,
               onValueChange = { posterUrl = it },
               label = "Lyen Imaj / Afich (URL)",
               placeholder = "https://...",
@@ -417,6 +599,7 @@ fun CreateAnnouncementBottomSheet(
         }
       }
 
+      // Sticky Action Footer (Clean & minimal)
       Row(
         modifier = Modifier
           .fillMaxWidth()
@@ -476,7 +659,10 @@ fun CreateAnnouncementBottomSheet(
             modifier = Modifier.size(18.dp),
           )
           Spacer(modifier = Modifier.width(8.dp))
-          Text("Pibliye & Senkwonize", fontWeight = FontWeight.Bold)
+          Text(
+            text = if (isEditing) "Anrejistre Modifikasyon" else "Pibliye & Senkwonize",
+            fontWeight = FontWeight.Bold,
+          )
         }
       }
     }

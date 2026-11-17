@@ -204,6 +204,7 @@ service cloud.firestore {
              isOptionalString(data, 'role', 80) &&
              (!( 'status' in data ) || data.status == null || (data.status is string && (data.status in ['active', 'inactive', 'pending', 'suspended']))) &&
              isOptionalString(data, 'barcodeToken', 256) &&
+             isOptionalString(data, 'nfcCardUid', 128) &&
              isOptionalTimestampField(data, 'createdAt') &&
              isOptionalTimestampField(data, 'updatedAt');
     }
@@ -281,7 +282,7 @@ service cloud.firestore {
              data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
              data.recordedByUid is string && data.recordedByUid.size() >= 1 && data.recordedByUid.size() <= 128 &&
              data.status in ['on_time', 'late'] &&
-             data.checkInMethod in ['qr_scan', 'qr_scanner', 'manual', 'kiosk'] &&
+             data.checkInMethod in ['qr_scan', 'qr_scanner', 'nfc_scan', 'manual', 'kiosk'] &&
              data.barcodeToken is string && data.barcodeToken.size() >= 4 && data.barcodeToken.size() <= 256 &&
              (!('attendanceRole' in data) || data.attendanceRole == 'member') &&
              (!('isVisitor' in data) || data.isVisitor == false) &&
@@ -315,7 +316,7 @@ service cloud.firestore {
              isOptionalString(data, 'memberDepartment', 100) &&
              isOptionalString(data, 'barcodeToken', 256) &&
              data.timestamp is string && data.timestamp.size() >= 10 && data.timestamp.size() <= 64 &&
-             data.checkInMethod in ['qr_scan', 'barcode', 'manual'] &&
+             data.checkInMethod in ['qr_scan', 'nfc_scan', 'barcode', 'manual'] &&
              data.recordedBy is string && data.recordedBy.size() >= 1 && data.recordedBy.size() <= 128 &&
              (!isSignedIn() || data.recordedBy == request.auth.uid) &&
              data.attendanceStatus in ['on_time', 'late'] &&
@@ -472,7 +473,7 @@ service cloud.firestore {
 
       allow create: if isValidId(memberId) &&
                        incoming().keys().hasAll(['userId', 'churchId', 'churchName', 'fullName', 'memberCode', 'department', 'role', 'status', 'barcodeToken', 'createdAt']) &&
-                       incoming().keys().hasOnly(['userId', 'churchId', 'churchName', 'churchLogoUrl', 'fullName', 'memberId', 'memberCode', 'phone', 'email', 'pin', 'securityPin', 'googleEmail', 'googleUid', 'googlePhoto', 'photoUrl', 'avatarUrl', 'photo', 'avatar', 'titlePrefix', 'emergencyContact', 'joinedDate', 'qrCode', 'joinedAt', 'attendanceStreak', 'totalAttendances', 'notes', 'address', 'gender', 'department', 'role', 'status', 'barcodeToken', 'joinDateFormatted', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'churchId', 'churchName', 'churchLogoUrl', 'fullName', 'memberId', 'memberCode', 'phone', 'email', 'pin', 'securityPin', 'googleEmail', 'googleUid', 'googlePhoto', 'photoUrl', 'avatarUrl', 'photo', 'avatar', 'titlePrefix', 'emergencyContact', 'joinedDate', 'qrCode', 'joinedAt', 'attendanceStreak', 'totalAttendances', 'notes', 'address', 'gender', 'department', 'role', 'status', 'barcodeToken', 'nfcCardUid', 'joinDateFormatted', 'createdAt', 'updatedAt']) &&
                        isValidMember(incoming()) &&
                        exists(churchPath(incoming().churchId)) &&
                        (
@@ -510,7 +511,7 @@ service cloud.firestore {
                           (!('memberId' in existing()) || incoming().memberId == existing().memberId) &&
                           (!('memberCode' in existing()) || incoming().memberCode == existing().memberCode) &&
                           (!isSignedIn() || !('googleUid' in incoming()) || incoming().googleUid == null || incoming().googleUid == '' || incoming().googleUid == request.auth.uid) &&
-                          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'photoUrl', 'avatarUrl', 'photo', 'avatar', 'titlePrefix', 'emergencyContact', 'joinedDate', 'department', 'phone', 'email', 'googleEmail', 'googleUid', 'googlePhoto', 'notes', 'address', 'gender', 'updatedAt']))
+                          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'photoUrl', 'avatarUrl', 'photo', 'avatar', 'titlePrefix', 'emergencyContact', 'joinedDate', 'department', 'phone', 'email', 'googleEmail', 'googleUid', 'googlePhoto', 'notes', 'address', 'gender', 'nfcCardUid', 'updatedAt']))
                        );
 
       allow delete: if isValidId(memberId) && isAdminOfChurch(existing().churchId);

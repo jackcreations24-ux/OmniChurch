@@ -15,7 +15,6 @@ import com.zoutiw.omnichurch.data.models.filterNonNullMap
 import com.google.firebase.Firebase
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.auth
-import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.snapshots
@@ -112,7 +111,10 @@ class AttendanceRepository(
         val byChurchSnap =
           db.collection("members").whereEqualTo("churchId", staffChurchId).get().await()
         val churchMembers = byChurchSnap.documents.mapNotNull { it.toMember() }
+        val rawWithoutNfcPrefix = rawUpper.removePrefix("NFC-UID:").trim()
+        val targetWithoutNfcPrefix = targetUpper.removePrefix("NFC-UID:").trim()
         churchMembers.firstOrNull { member ->
+          val memberNfcUid = member.nfcCardUid.trim().uppercase().removePrefix("NFC-UID:")
           member.effectiveMatrikil.uppercase() == targetUpper ||
             member.id.trim().uppercase() == targetUpper ||
             member.memberCode.trim().uppercase() == targetUpper ||
@@ -121,7 +123,8 @@ class AttendanceRepository(
             member.barcodeToken.trim().uppercase() == rawUpper ||
             member.qrCode.trim().uppercase() == rawUpper ||
             member.effectiveMatrikil.uppercase() == rawUpper ||
-            member.id.trim().uppercase() == rawUpper
+            member.id.trim().uppercase() == rawUpper ||
+            (memberNfcUid.isNotEmpty() && (memberNfcUid == rawWithoutNfcPrefix || memberNfcUid == targetWithoutNfcPrefix))
         }
       } catch (e: CancellationException) {
         throw e
@@ -184,6 +187,12 @@ class AttendanceRepository(
     val memberUserId = matchedMember.userId.trim().ifEmpty { matchedMember.id }
     val memberToken = matchedMember.effectiveBarcodeToken
 
+    val normalizedCheckInMethod = when (checkInMethod.trim().lowercase()) {
+      "manual" -> "manual"
+      "nfc", "nfc_scan" -> "nfc_scan"
+      else -> "qr_scan"
+    }
+
     val payload =
       filterNonNullMap(
         "churchId" to staffChurchId,
@@ -197,7 +206,7 @@ class AttendanceRepository(
         "userId" to memberUserId,
         "recordedByUid" to staffUid,
         "status" to computedStatus,
-        "checkInMethod" to if (checkInMethod == "manual") "manual" else "qr_scan",
+        "checkInMethod" to normalizedCheckInMethod,
         "barcodeToken" to memberToken,
         "timestamp" to nowMillis,
         "createdAt" to FieldValue.serverTimestamp(),
@@ -236,7 +245,7 @@ class AttendanceRepository(
           userId = memberUserId,
           recordedByUid = staffUid,
           status = computedStatus,
-          checkInMethod = if (checkInMethod == "manual") "manual" else "qr_scan",
+          checkInMethod = normalizedCheckInMethod,
           barcodeToken = memberToken,
           createdAt = Timestamp.now(),
         )
@@ -269,11 +278,8 @@ class AttendanceRepository(
         .whereEqualTo("serviceId", serviceId)
         .snapshots()
         .map { snapshot ->
-          snapshot
-            .toObjects(
-              AttendanceRecord::class.java,
-              DocumentSnapshot.ServerTimestampBehavior.ESTIMATE,
-            )
+          snapshot.documents
+            .mapNotNull { it.toAttendanceRecord() }
             .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
         }
         .catch { error ->

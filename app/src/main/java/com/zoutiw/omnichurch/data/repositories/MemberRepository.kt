@@ -371,4 +371,32 @@ class MemberRepository(
       Result.failure(e)
     }
   }
+
+  suspend fun bindNfcCardUidToMember(
+    memberDocId: String,
+    nfcCardUid: String,
+  ): Result<Unit> {
+    val cleanDocId = memberDocId.trim()
+    val cleanUid = nfcCardUid.trim().uppercase().removePrefix("NFC-UID:").trim()
+    if (cleanDocId.isBlank() || cleanUid.isBlank()) {
+      return Result.failure(IllegalArgumentException("ID manm nan oswa UID kat NFC a pa valid."))
+    }
+    val memberRef = db.collection("members").document(cleanDocId)
+    return try {
+      memberRef
+        .update(
+          filterNonNullMap(
+            "nfcCardUid" to cleanUid,
+            "updatedAt" to FieldValue.serverTimestamp(),
+          )
+        )
+        .await()
+      Result.success(Unit)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      handleFirestoreError(e, OperationType.UPDATE, memberRef.path)
+      Result.failure(e)
+    }
+  }
 }

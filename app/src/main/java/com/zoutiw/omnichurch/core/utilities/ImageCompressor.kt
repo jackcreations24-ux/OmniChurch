@@ -16,6 +16,10 @@ object ImageCompressor {
   private const val MAX_DIMENSION = 400
   private const val COMPRESS_QUALITY = 80
 
+  /**
+   * Scales a Bitmap so neither dimension exceeds [maxDimension], compresses it to JPEG at [quality]%,
+   * and returns a web-compatible Base64 Data URL (e.g., "data:image/jpeg;base64,...").
+   */
   fun compressBitmapToBase64(
     bitmap: Bitmap,
     maxDimension: Int = MAX_DIMENSION,
@@ -49,6 +53,10 @@ object ImageCompressor {
     return "data:image/jpeg;base64,$base64"
   }
 
+  /**
+   * Reads an image Uri, handles Exif orientation, compresses to max 400x400 JPEG 80%,
+   * and returns a Base64 Data URL.
+   */
   suspend fun compressUriToBase64(
     context: Context,
     uri: Uri,
@@ -62,6 +70,7 @@ object ImageCompressor {
           return@withContext Result.failure(IllegalArgumentException("Imposib pou li imaj la."))
         }
 
+        // Decode bounds first to optimize memory
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeStream(inputStream, null, options)
         inputStream.close()
@@ -77,6 +86,7 @@ object ImageCompressor {
           return@withContext Result.failure(IllegalStateException("Fòma imaj la pa rekonèt."))
         }
 
+        // Correct EXIF orientation
         val orientationAdjusted =
           try {
             context.contentResolver.openInputStream(uri)?.use { exifStream ->
@@ -120,6 +130,12 @@ object ImageCompressor {
 
   private val base64BitmapCache = android.util.LruCache<Int, Bitmap>(32)
 
+  /**
+   * Decodes a PC/Web Base64 Data URL (e.g. "data:image/jpeg;base64,...", "data:image/png;base64,...")
+   * or a raw Base64 image string into an Android [Bitmap], using an in-memory [android.util.LruCache]
+   * so repeated Compose recompositions are instantaneous.
+   * Returns null if [photoSource] is a regular HTTP/HTTPS/file URL or cannot be decoded as Base64.
+   */
   fun decodeBase64DataUrlToBitmap(photoSource: String?): Bitmap? {
     val clean = photoSource?.trim().orEmpty()
     if (clean.isEmpty()) return null

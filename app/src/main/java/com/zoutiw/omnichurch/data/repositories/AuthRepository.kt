@@ -13,8 +13,11 @@ import com.zoutiw.omnichurch.data.models.OmniAuthException
 import com.zoutiw.omnichurch.data.models.UserProfile
 import com.zoutiw.omnichurch.data.models.filterNonNullMap
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.FirebaseTooManyRequestsException
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.auth
-import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.snapshots
@@ -39,6 +42,8 @@ class AuthRepository(
   )
 
   private val auth = Firebase.auth
+
+  fun currentAuthUid(): String = auth.currentUser?.uid?.trim().orEmpty()
 
   fun resolveActorId(preferredActorId: String? = null): String {
     val cleanPreferred = (preferredActorId ?: "").trim()
@@ -253,32 +258,166 @@ class AuthRepository(
 
   suspend fun signInAdminWithEmailAndPassword(
     email: String,
-    passcode: String,
+    password: String,
+    selectedChurchId: String? = null,
   ): Result<Church> {
     val cleanEmail = email.trim().lowercase()
-    val cleanPasscode = passcode.trim()
-    if (cleanEmail.isEmpty() || cleanPasscode.isEmpty()) {
-      return Result.failure(OmniAuthException("Tanpri antre imèl ak modpas ou."))
+    if (cleanEmail.isEmpty()) {
+      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_EMPTY_EMAIL))
     }
+    if (!cleanEmail.contains("@") || !cleanEmail.substringAfter("@").contains(".")) {
+      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_INVALID_EMAIL))
+    }
+    if (password.isBlank()) {
+      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_EMPTY_PASSWORD))
+    }
+
     return try {
-      val authResult = auth.signInWithEmailAndPassword(cleanEmail, cleanPasscode).await()
-      val firebaseUser = authResult.user ?: return Result.failure(OmniAuthException("Otantifikasyon echwe."))
+      val authResult = auth.signInWithEmailAndPassword(cleanEmail, password).await()
+      val firebaseUser =
+        authResult.user ?: return Result.failure(OmniAuthException("Otantifikasyon echwe."))
+
+      val existingUserProfile =
+        runCatching {
+          db.collection("users")
+            .document(firebaseUser.uid)
+            .get()
+            .await()
+            .toUserProfile()
+        }.getOrNull()
 
       val churches = churchRepository.fetchAllChurches()
-      val matchedChurch = churches.firstOrNull { church ->
-        church.adminGoogleEmail.trim().lowercase() == cleanEmail ||
-          church.ownerId == firebaseUser.uid
-      } ?: churches.firstOrNull()
+      val resolutionResult =
+        OmniAuthEvaluator.resolveChurchForEmailPasswordLogin(
+          churches = churches,
+          email = firebaseUser.email ?: cleanEmail,
+          uid = firebaseUser.uid,
+          selectedChurchId = selectedChurchId,
+          profileChurchId = existingUserProfile?.churchId,
+          profileRole = existingUserProfile?.role,
+        )
 
+      val matchedChurch = resolutionResult.getOrNull()
       if (matchedChurch == null) {
-        return Result.failure(OmniAuthException("Okenn legliz pa jwenn pou imèl sa a."))
+        runCatching { auth.signOut() }
+        return Result.failure(
+          resolutionResult.exceptionOrNull()
+            ?: OmniAuthException("Okenn legliz pa jwenn pou imèl sa a.")
+        )
       }
+
+      syncAdminUserProfileForChurch(
+        uid = firebaseUser.uid,
+        email = firebaseUser.email ?: cleanEmail,
+        displayName =
+          firebaseUser.displayName?.takeIf { it.isNotBlank() }
+            ?: matchedChurch.pastor.takeIf { it.isNotBlank() }
+            ?: matchedChurch.name.ifBlank { "Admin OmniChurch" },
+        photoUrl = firebaseUser.photoUrl?.toString(),
+        church = matchedChurch,
+      )
+
       Result.success(matchedChurch)
     } catch (e: CancellationException) {
       throw e
+    } catch (e: FirebaseAuthInvalidUserException) {
+      Result.failure(
+        OmniAuthException("Kont imèl sa a pa egziste oswa li dezaktive. Verifye imèl la.")
+      )
+    } catch (e: FirebaseAuthInvalidCredentialsException) {
+      Result.failure(
+        OmniAuthException("Imèl oswa modpas la pa kòrèk. Verifye enfòmasyon yo epi eseye ankò.")
+      )
+    } catch (e: FirebaseTooManyRequestsException) {
+      Result.failure(
+        OmniAuthException("Twòp tantativ koneksyon echwe. Tanpri tann kèk minit anvan ou re-eseye.")
+      )
+    } catch (e: FirebaseNetworkException) {
+      Result.failure(
+        OmniAuthException("Pa gen koneksyon entènèt. Verifye rezo ou epi eseye ankò.")
+      )
     } catch (e: Exception) {
       handleFirestoreError(e, OperationType.GET, "churches")
       Result.failure(OmniAuthException(e.localizedMessage ?: "Imèl oswa modpas la pa kòrèk."))
+    }
+  }
+
+  suspend fun sendAdminPasswordResetEmail(email: String): Result<Unit> {
+    val cleanEmail = email.trim().lowercase()
+    if (cleanEmail.isEmpty()) {
+      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_EMPTY_EMAIL))
+    }
+    if (!cleanEmail.contains("@") || !cleanEmail.substringAfter("@").contains(".")) {
+      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_INVALID_EMAIL))
+    }
+    return try {
+      auth.sendPasswordResetEmail(cleanEmail).await()
+      Result.success(Unit)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: FirebaseAuthInvalidUserException) {
+      Result.failure(OmniAuthException("Okenn kont imèl pa jwenn pou adrès sa a."))
+    } catch (e: FirebaseNetworkException) {
+      Result.failure(OmniAuthException("Pa gen koneksyon entènèt pou voye imèl la."))
+    } catch (e: Exception) {
+      Result.failure(
+        OmniAuthException(
+          e.localizedMessage ?: "Nou pa t kapab voye lyen pou chanje modpas la. Eseye ankò."
+        )
+      )
+    }
+  }
+
+  private suspend fun syncAdminUserProfileForChurch(
+    uid: String,
+    email: String,
+    displayName: String,
+    photoUrl: String?,
+    church: Church,
+  ) {
+    if (uid.isBlank() || church.id.isBlank()) return
+    val userRef = db.collection("users").document(uid)
+    val targetRole =
+      if (email.trim().equals(OmniAuthEvaluator.SUPER_ADMIN_EMAIL, ignoreCase = true)) {
+        "super_admin"
+      } else {
+        "admin"
+      }
+    runCatching {
+      val existingSnap = userRef.get().await()
+      if (existingSnap.exists()) {
+        userRef
+          .update(
+            filterNonNullMap(
+              "churchId" to church.id.trim(),
+              "churchName" to church.name.trim().ifBlank { "OmniChurch Pro" },
+              "role" to targetRole,
+              "displayName" to displayName.trim().ifBlank { "Admin OmniChurch" },
+              "photoUrl" to photoUrl?.trim()?.takeIf { it.isNotEmpty() },
+              "updatedAt" to FieldValue.serverTimestamp(),
+            )
+          )
+          .await()
+      } else {
+        userRef
+          .set(
+            filterNonNullMap(
+              "userId" to uid,
+              "email" to email.trim().ifBlank { "admin@omnichurch.org" },
+              "displayName" to displayName.trim().ifBlank { "Admin OmniChurch" },
+              "photoUrl" to photoUrl?.trim()?.takeIf { it.isNotEmpty() },
+              "churchId" to church.id.trim(),
+              "churchName" to church.name.trim().ifBlank { "OmniChurch Pro" },
+              "role" to targetRole,
+              "language" to "ht",
+              "createdAt" to FieldValue.serverTimestamp(),
+              "updatedAt" to FieldValue.serverTimestamp(),
+            )
+          )
+          .await()
+      }
+    }.onFailure { err ->
+      Log.w("AuthRepository", "Admin profile sync deferred: ${err.message}")
     }
   }
 
@@ -295,10 +434,7 @@ class AuthRepository(
         .snapshots()
         .map { snapshot ->
           if (snapshot.exists()) {
-            snapshot.toObject(
-              UserProfile::class.java,
-              DocumentSnapshot.ServerTimestampBehavior.ESTIMATE,
-            )
+            snapshot.toUserProfile()
           } else {
             null
           }
@@ -323,11 +459,7 @@ class AuthRepository(
     return try {
       val existingSnap = docRef.get().await()
       if (existingSnap.exists()) {
-        val existingProfile =
-          existingSnap.toObject(
-            UserProfile::class.java,
-            DocumentSnapshot.ServerTimestampBehavior.ESTIMATE,
-          )
+        val existingProfile = existingSnap.toUserProfile()
         if (existingProfile != null) {
           return Result.success(existingProfile)
         }
@@ -363,7 +495,7 @@ class AuthRepository(
         docRef
           .get()
           .await()
-          .toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+          .toUserProfile()
           ?: UserProfile(
             id = uid,
             userId = uid,

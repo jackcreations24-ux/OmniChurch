@@ -9,6 +9,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,6 +77,12 @@ import com.zoutiw.omnichurch.ui.theme.PureWhite
 import com.zoutiw.omnichurch.ui.theme.RoyalBlue
 import com.zoutiw.omnichurch.ui.theme.SuccessGreen
 
+/**
+ * Reusable 3D Digital Member Card component (`PremiumMemberCard` / `MemberIdCard`).
+ * Reproduces the exact middle smartphone design from the official reference image on its Front
+ * face (Recto), and smoothly flips 180° around the Y-axis to reveal the official Back verification
+ * face (Verso).
+ */
 @Composable
 fun PremiumMemberCard(
   member: Member,
@@ -140,6 +147,7 @@ fun MemberIdCard(
           shape = cardShape,
         )
         .drawBehind {
+          // Top-center luminous neon/white specular flare (matching Phone 2 top card edge)
           drawLine(
             brush =
               Brush.horizontalGradient(
@@ -159,6 +167,9 @@ fun MemberIdCard(
         .testTag("digital_member_id_card"),
   ) {
     if (rotation <= 90f) {
+      // ================================================================
+      // FAS DEVAN (RECTO — EXACT PHONE 2 REFERENCE DESIGN)
+      // ================================================================
       MemberCardReferenceFrontFace(
         member = member,
         qrBitmap = qrBitmap,
@@ -168,6 +179,10 @@ fun MemberIdCard(
         onFlipCard = { isFlipped = true },
       )
     } else {
+      // ================================================================
+      // FAS DÈYÈ (VERSO — OFFICIAL VERIFICATION & SIGNATURE BACK FACE)
+      // Counter-rotated 180° so text and QR are not mirrored
+      // ================================================================
       Box(
         modifier =
           Modifier.fillMaxWidth().graphicsLayer {
@@ -195,6 +210,7 @@ private fun MemberCardReferenceFrontFace(
   onFlipCard: () -> Unit,
 ) {
   Box(modifier = Modifier.fillMaxWidth()) {
+    // 1. Top Cinematic Church Sanctuary Backdrop on the upper header
     Image(
       painter = painterResource(id = R.drawable.omnichurch_home_bg),
       contentDescription = null,
@@ -206,10 +222,13 @@ private fun MemberCardReferenceFrontFace(
           .align(Alignment.TopCenter),
     )
 
+    // 2. Custom 3D Waves: Deep Royal Blue top-left wave, Golden-Orange 3D metallic ribbon,
+    //    Silver-Pearl curved body, and bottom-left Golden-Orange metallic wave
     Canvas(modifier = Modifier.matchParentSize()) {
       val w = size.width
       val h = size.height
 
+      // Top-left deep royal blue glass wave over header
       val topLeftBlueWave =
         Path().apply {
           moveTo(0f, 0f)
@@ -232,6 +251,7 @@ private fun MemberCardReferenceFrontFace(
           ),
       )
 
+      // Sweeping 3D Golden-Orange Metallic Ribbon Wave across the middle-top
       val goldRibbonPath =
         Path().apply {
           moveTo(0f, h * 0.21f)
@@ -262,6 +282,7 @@ private fun MemberCardReferenceFrontFace(
           ),
       )
 
+      // Pearl / Ice-Silver Body below the wave
       val pearlBodyPath =
         Path().apply {
           moveTo(0f, h * 0.27f)
@@ -292,6 +313,7 @@ private fun MemberCardReferenceFrontFace(
           ),
       )
 
+      // Bottom-left Golden-Orange 3D metallic wave accent
       val bottomGoldWave =
         Path().apply {
           moveTo(0f, h * 0.78f)
@@ -309,6 +331,7 @@ private fun MemberCardReferenceFrontFace(
           ),
       )
 
+      // Bottom-right subtle electric blue glass wave accent
       val bottomBlueWave =
         Path().apply {
           moveTo(w, h * 0.80f)
@@ -327,12 +350,14 @@ private fun MemberCardReferenceFrontFace(
       )
     }
 
+    // 3. Foreground Card Content
     Column(
       modifier =
         Modifier.fillMaxWidth()
           .padding(horizontal = 18.dp, vertical = 14.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+      // Top Header Row: OmniChurch Pro Brand + Flip to Verso Button
       Box(modifier = Modifier.fillMaxWidth()) {
         OmniChurchBrandHeader(
           badgeText = stringResource(R.string.app_subtitle_pro),
@@ -340,6 +365,7 @@ private fun MemberCardReferenceFrontFace(
           modifier = Modifier.align(Alignment.Center),
         )
 
+        // Subtle 3D Flip Button in top-right corner
         Box(
           modifier =
             Modifier.align(Alignment.TopEnd)
@@ -362,6 +388,7 @@ private fun MemberCardReferenceFrontFace(
 
       Spacer(modifier = Modifier.height(8.dp))
 
+      // Circular Member Photograph in 3D Silver/White Ring + Verified Green Badge + Camera Button
       Box(
         modifier = Modifier.size(112.dp),
         contentAlignment = Alignment.Center,
@@ -417,6 +444,7 @@ private fun MemberCardReferenceFrontFace(
           }
         }
 
+        // Bottom-Right Verified Green Checkmark Badge (Exact Phone 2 match)
         Box(
           modifier =
             Modifier.align(Alignment.BottomEnd)
@@ -438,6 +466,7 @@ private fun MemberCardReferenceFrontFace(
           )
         }
 
+        // Bottom-Left Camera Button to update profile photo
         Box(
           modifier =
             Modifier.align(Alignment.BottomStart)
@@ -462,6 +491,7 @@ private fun MemberCardReferenceFrontFace(
 
       Spacer(modifier = Modifier.height(8.dp))
 
+      // Member Full Name (in ExtraBold Dark Navy matching Phone 2)
       val displayTitleAndName =
         buildString {
           if (!member.titlePrefix.isNullOrBlank()) {
@@ -483,6 +513,7 @@ private fun MemberCardReferenceFrontFace(
 
       Spacer(modifier = Modifier.height(5.dp))
 
+      // Green "Manm Aktif" 3D Pill Badge
       Box(
         modifier =
           Modifier.shadow(8.dp, RoundedCornerShape(50), ambientColor = SuccessGreen)
@@ -505,6 +536,7 @@ private fun MemberCardReferenceFrontFace(
 
       Spacer(modifier = Modifier.height(12.dp))
 
+      // Three Metadata Columns (Depatman | Wòl | Dat Antre)
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -532,6 +564,7 @@ private fun MemberCardReferenceFrontFace(
 
       Spacer(modifier = Modifier.height(12.dp))
 
+      // Official High-Contrast QR Container with Glowing Blue Corner Brackets & Center Flame
       PremiumQRContainer(
         qrBitmap = qrBitmap,
         size = 192.dp,
@@ -542,6 +575,7 @@ private fun MemberCardReferenceFrontFace(
 
       Spacer(modifier = Modifier.height(10.dp))
 
+      // Bottom Member ID Pill with Copy Button ("ID Manm: OM-0258743")
       Row(
         modifier =
           Modifier.clip(RoundedCornerShape(50))
@@ -608,6 +642,9 @@ private fun CardMetadataColumn(
   }
 }
 
+/**
+ * Fas Dèyè (Verso): Official Back Verification Face with 184dp QR, Emergency Contact, and Pastor Signature.
+ */
 @Composable
 private fun MemberCardBackFace(
   member: Member,
@@ -673,6 +710,7 @@ private fun MemberCardBackFace(
 
     Spacer(modifier = Modifier.height(14.dp))
 
+    // High-Contrast QR Code Area (190dp)
     PremiumQRContainer(
       qrBitmap = qrBitmap,
       size = 190.dp,
@@ -693,8 +731,40 @@ private fun MemberCardBackFace(
       letterSpacing = 0.5.sp,
     )
 
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(10.dp))
 
+    // Canonical 1D Barcode Strip + Serial (CHURCH:{churchId}|MEMBER:{memberId})
+    val canonicalBarcode = member.canonicalBarcodeDisplay
+    if (canonicalBarcode.isNotBlank()) {
+      Column(
+        modifier =
+          Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(PureWhite)
+            .border(1.dp, BlueNeon.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+      ) {
+        CanonicalBarcodeStrip(
+          value = canonicalBarcode,
+          modifier = Modifier.fillMaxWidth().height(28.dp),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+          text = canonicalBarcode,
+          style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+          color = DeepNavy,
+          fontFamily = FontFamily.Monospace,
+          fontWeight = FontWeight.Bold,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+    }
+
+    // Emergency Contact & Phone + Signature
     Column(
       modifier =
         Modifier.fillMaxWidth()
@@ -765,6 +835,55 @@ private fun MemberCardBackFace(
         color = PureWhite,
         fontWeight = FontWeight.Bold,
       )
+    }
+  }
+}
+
+@Composable
+fun CanonicalBarcodeStrip(
+  value: String,
+  modifier: Modifier = Modifier,
+  barColor: Color = DeepNavy,
+) {
+  val barsPattern =
+    remember(value) {
+      val clean = value.ifBlank { "OMNICHURCH" }
+      val weights = mutableListOf<Pair<Boolean, Float>>()
+      // Quiet start + Code128-style start bars
+      weights.add(true to 2f)
+      weights.add(false to 1f)
+      weights.add(true to 1f)
+      weights.add(false to 2f)
+      clean.forEachIndexed { idx, ch ->
+        val code = ch.code
+        for (bit in 0 until 6) {
+          val isBlack = ((code shr bit) and 1) == 1 || (bit == 0 && idx % 2 == 0)
+          val w = if (((code + bit) % 3) == 0) 2.2f else 1.1f
+          weights.add(isBlack to w)
+          weights.add(false to if (((code + bit) % 2) == 0) 1.0f else 1.7f)
+        }
+      }
+      // End guard bars
+      weights.add(true to 2f)
+      weights.add(false to 1f)
+      weights.add(true to 2f)
+      weights
+    }
+
+  Canvas(modifier = modifier) {
+    val totalUnits = barsPattern.sumOf { it.second.toDouble() }.toFloat().coerceAtLeast(1f)
+    val unitWidth = size.width / totalUnits
+    var x = 0f
+    barsPattern.forEach { (isDark, weight) ->
+      val w = weight * unitWidth
+      if (isDark) {
+        drawRect(
+          color = barColor,
+          topLeft = Offset(x, 0f),
+          size = androidx.compose.ui.geometry.Size(w.coerceAtLeast(1f), size.height),
+        )
+      }
+      x += w
     }
   }
 }

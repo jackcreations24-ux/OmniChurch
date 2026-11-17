@@ -98,8 +98,17 @@ class OmniChurchRepository(
   ): Result<Church> =
     authRepository.authenticateAdminForChurch(selectedChurchId, enteredPasscode, googleEmail, googleUid)
 
-  suspend fun signInAdminWithEmailAndPassword(email: String, passcode: String): Result<Church> =
-    authRepository.signInAdminWithEmailAndPassword(email, passcode)
+  fun currentAuthUid(): String = authRepository.currentAuthUid()
+
+  suspend fun signInAdminWithEmailAndPassword(
+    email: String,
+    password: String,
+    selectedChurchId: String? = null,
+  ): Result<Church> =
+    authRepository.signInAdminWithEmailAndPassword(email, password, selectedChurchId)
+
+  suspend fun sendAdminPasswordResetEmail(email: String): Result<Unit> =
+    authRepository.sendAdminPasswordResetEmail(email)
 
   fun observeUserProfile(userId: String): Flow<UserProfile?> =
     authRepository.observeUserProfile(userId)
@@ -183,6 +192,15 @@ class OmniChurchRepository(
       ministryRole = ministryRole,
       phone = phone,
       titlePrefix = titlePrefix,
+    )
+
+  suspend fun bindNfcCardUidToMember(
+    memberDocId: String,
+    nfcCardUid: String,
+  ): Result<Unit> =
+    memberRepository.bindNfcCardUidToMember(
+      memberDocId = memberDocId,
+      nfcCardUid = nfcCardUid,
     )
 
   // Service Delegation

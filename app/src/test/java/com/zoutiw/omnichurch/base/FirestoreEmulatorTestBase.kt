@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreSettings
@@ -98,6 +99,30 @@ abstract class FirestoreEmulatorTestBase {
         }
         throw org.junit.AssumptionViolatedException("Firebase Auth emulator not running on port $AUTH_PORT: ${lastError?.message}")
       }
+    }
+
+  protected suspend fun signInVerifiedSuperAdmin(
+    email: String = "charlesjj3186@gmail.com",
+  ): String =
+    withContext(Dispatchers.IO) {
+      val uid = signInTestUser(email)
+      val user = checkNotNull(auth.currentUser)
+      val url =
+        java.net.URL(
+          "http://$EMULATOR_HOST:$AUTH_PORT/identitytoolkit.googleapis.com/v1/projects/$PROJECT_ID/accounts:update"
+        )
+      val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+        requestMethod = "POST"
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json")
+        setRequestProperty("Authorization", "Bearer owner")
+      }
+      val payload = """{"localId":"$uid","emailVerified":true}"""
+      conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+      val code = conn.responseCode
+      check(code in 200..299) { "Failed to set emailVerified in Auth emulator: HTTP $code" }
+      user.getIdToken(true).await()
+      uid
     }
 
   protected fun Throwable.unwrapFirestoreException(): FirebaseFirestoreException? {

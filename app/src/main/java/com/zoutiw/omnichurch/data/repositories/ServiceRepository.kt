@@ -143,6 +143,7 @@ class ServiceRepository(
       val notifRef = db.collection("notifications").document()
       val notifPayload =
         filterNonNullMap(
+          "userId" to "all",
           "churchId" to churchId,
           "title" to "Nouvo Sèvis Pibliye ⛪",
           "message" to "${title.trim()} • ${dateFormatted.trim()}",

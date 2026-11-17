@@ -1,7 +1,9 @@
 package com.zoutiw.omnichurch.presentation.screens.scanner
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,10 +34,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,11 +49,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Contactless
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -60,10 +70,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -71,6 +84,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -79,21 +93,28 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.zoutiw.omnichurch.R
+import com.zoutiw.omnichurch.core.utilities.NfcAttendanceHelper
+import com.zoutiw.omnichurch.core.utilities.NfcIntentBus
+import com.zoutiw.omnichurch.core.utilities.findActivity
 import com.zoutiw.omnichurch.data.models.AttendanceErrorType
 import com.zoutiw.omnichurch.data.models.ChurchService
+import com.zoutiw.omnichurch.data.models.Member
 import com.zoutiw.omnichurch.data.models.ScannerValidationOutcome
 import com.zoutiw.omnichurch.data.models.UserProfile
 import com.zoutiw.omnichurch.presentation.components.GlassButton
 import com.zoutiw.omnichurch.presentation.components.GlassInputField
 import com.zoutiw.omnichurch.presentation.components.GlassModalBottomSheet
-import com.zoutiw.omnichurch.presentation.components.GlassSegmentedControl
 import com.zoutiw.omnichurch.presentation.components.GlassTopBar
 import com.zoutiw.omnichurch.presentation.components.MemberAvatar3D
 import com.zoutiw.omnichurch.presentation.components.OmniChurch3DFlameIcon
@@ -110,7 +131,6 @@ import com.zoutiw.omnichurch.ui.theme.GlassWhite
 import com.zoutiw.omnichurch.ui.theme.MutedGlassText
 import com.zoutiw.omnichurch.ui.theme.OmniBrushes
 import com.zoutiw.omnichurch.ui.theme.PureWhite
-import com.zoutiw.omnichurch.ui.theme.RoyalBlue
 import com.zoutiw.omnichurch.ui.theme.SuccessGreen
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -130,14 +150,23 @@ fun AdminQRScannerScreen(
   onOpenServicesManagement: () -> Unit,
   onBackClick: () -> Unit,
   modifier: Modifier = Modifier,
+  churchMembers: List<Member> = emptyList(),
+  onBindNfcCardToMember: ((memberDocId: String, nfcCardUid: String, onLinked: () -> Unit) -> Unit)? =
+    null,
 ) {
   BackHandler(onBack = onBackClick)
   val context = LocalContext.current
+  val activity = remember(context) { context.findActivity() }
+  val lifecycleOwner = LocalLifecycleOwner.current
+  val haptic = LocalHapticFeedback.current
 
   var scanMode by remember { mutableStateOf("qr_scan") }
   var manualCodeInput by remember { mutableStateOf("") }
   var showServicePickerSheet by remember { mutableStateOf(false) }
   var isTorchEnabled by remember { mutableStateOf(false) }
+  var lastScannedNfcToken by remember { mutableStateOf<String?>(null) }
+  var showBindNfcMemberSheet by remember { mutableStateOf(false) }
+  var nfcBindSearchQuery by remember { mutableStateOf("") }
 
   var hasCameraPermission by remember {
     mutableStateOf(
@@ -155,6 +184,72 @@ fun AdminQRScannerScreen(
     remember(activeServices, selectedServiceId) {
       activeServices.firstOrNull { it.id == selectedServiceId } ?: activeServices.firstOrNull()
     }
+
+  val currentSelectedService by rememberUpdatedState(selectedService)
+  val currentValidationOutcome by rememberUpdatedState(validationOutcome)
+  val currentScanMode by rememberUpdatedState(scanMode)
+
+  val nfcHelper =
+    remember(activity) {
+      activity?.let { act ->
+        NfcAttendanceHelper(act) { scannedToken ->
+          haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+          lastScannedNfcToken = scannedToken
+          val srv = currentSelectedService
+          if (
+            srv != null &&
+              currentValidationOutcome !is ScannerValidationOutcome.Processing
+          ) {
+            onResetOutcome()
+            onScanOrSubmitCode(scannedToken, srv, "nfc_scan")
+          }
+        }
+      }
+    }
+
+  val isNfcSupported = nfcHelper?.isNfcSupported() == true
+  var isNfcEnabled by remember(nfcHelper) { mutableStateOf(nfcHelper?.isNfcEnabled() == true) }
+
+  val latestNfcIntent by NfcIntentBus.latestIntent.collectAsStateWithLifecycle()
+
+  LaunchedEffect(latestNfcIntent) {
+    val incomingIntent = latestNfcIntent ?: return@LaunchedEffect
+    if (currentScanMode != "nfc_scan") {
+      scanMode = "nfc_scan"
+    }
+    nfcHelper?.handleIntent(incomingIntent)
+    NfcIntentBus.consume()
+  }
+
+  DisposableEffect(lifecycleOwner, nfcHelper, scanMode) {
+    isNfcEnabled = nfcHelper?.isNfcEnabled() == true
+    if (scanMode == "nfc_scan" && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+      nfcHelper?.onResume()
+    } else {
+      nfcHelper?.onPause()
+    }
+
+    val observer = LifecycleEventObserver { _, event ->
+      when (event) {
+        Lifecycle.Event.ON_RESUME -> {
+          isNfcEnabled = nfcHelper?.isNfcEnabled() == true
+          if (currentScanMode == "nfc_scan") {
+            nfcHelper?.onResume()
+          }
+        }
+        Lifecycle.Event.ON_PAUSE -> {
+          nfcHelper?.onPause()
+        }
+        else -> Unit
+      }
+    }
+    lifecycleOwner.lifecycle.addObserver(observer)
+
+    onDispose {
+      lifecycleOwner.lifecycle.removeObserver(observer)
+      nfcHelper?.onPause()
+    }
+  }
 
   val roleBadgeText =
     if (userProfile?.role == "usher") stringResource(R.string.scanner_role_usher)
@@ -180,22 +275,15 @@ fun AdminQRScannerScreen(
           .padding(horizontal = 16.dp, vertical = 6.dp),
       verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-      GlassSegmentedControl(
-        leftLabel = stringResource(R.string.scanner_tab_qr),
-        leftIcon = Icons.Default.QrCodeScanner,
-        rightLabel = stringResource(R.string.scanner_tab_manual),
-        rightIcon = Icons.Default.Keyboard,
-        isLeftSelected = scanMode == "qr_scan",
-        onSelectLeft = {
-          scanMode = "qr_scan"
+      ScannerModeTabBar(
+        selectedMode = scanMode,
+        onSelectMode = { mode ->
+          scanMode = mode
+          if (mode != "nfc_scan") {
+            lastScannedNfcToken = null
+          }
           onResetOutcome()
         },
-        onSelectRight = {
-          scanMode = "manual"
-          onResetOutcome()
-        },
-        leftTestTag = "scanner_tab_qr_scan",
-        rightTestTag = "scanner_tab_manual",
       )
 
       ActiveServiceSelectorCard(
@@ -210,67 +298,99 @@ fun AdminQRScannerScreen(
         onCreateServiceClick = onOpenServicesManagement,
       )
 
-      if (scanMode == "qr_scan") {
-        if (hasCameraPermission) {
-          CameraXQrViewportCard(
-            isScanningEnabled =
-              selectedService != null && validationOutcome is ScannerValidationOutcome.Idle,
-            isTorchEnabled = isTorchEnabled,
-            onToggleTorch = { isTorchEnabled = !isTorchEnabled },
-            onQrDetected = { rawToken ->
-              if (selectedService != null && validationOutcome is ScannerValidationOutcome.Idle) {
-                onScanOrSubmitCode(rawToken, selectedService, "qr_scan")
+      when (scanMode) {
+        "qr_scan" -> {
+          if (hasCameraPermission) {
+            CameraXQrViewportCard(
+              isScanningEnabled =
+                selectedService != null && validationOutcome is ScannerValidationOutcome.Idle,
+              isTorchEnabled = isTorchEnabled,
+              onToggleTorch = { isTorchEnabled = !isTorchEnabled },
+              onQrDetected = { rawToken ->
+                if (selectedService != null && validationOutcome is ScannerValidationOutcome.Idle) {
+                  onScanOrSubmitCode(rawToken, selectedService, "qr_scan")
+                }
+              },
+            )
+          } else {
+            PremiumEmptyState(
+              title = stringResource(R.string.scanner_camera_permission_title),
+              subtitle = stringResource(R.string.scanner_camera_permission_msg),
+              icon = Icons.Default.CameraAlt,
+              actionLabel = stringResource(R.string.scanner_grant_permission),
+              onActionClick = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+            )
+          }
+        }
+        "nfc_scan" -> {
+          NfcTapViewportCard(
+            isNfcSupported = isNfcSupported,
+            isNfcEnabled = isNfcEnabled,
+            hasActiveService = selectedService != null,
+            lastScannedToken = lastScannedNfcToken,
+            onOpenNfcSettings = {
+              runCatching {
+                context.startActivity(
+                  Intent(Settings.ACTION_NFC_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  }
+                )
               }
             },
-          )
-        } else {
-          PremiumEmptyState(
-            title = stringResource(R.string.scanner_camera_permission_title),
-            subtitle = stringResource(R.string.scanner_camera_permission_msg),
-            icon = Icons.Default.CameraAlt,
-            actionLabel = stringResource(R.string.scanner_grant_permission),
-            onActionClick = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
           )
         }
-      } else {
-        PremiumGlassCard(
-          cornerRadius = 22.dp,
-          contentPadding = PaddingValues(18.dp),
-        ) {
-          Text(
-            text = stringResource(R.string.scanner_manual_input_label),
-            style = MaterialTheme.typography.titleMedium,
-            color = PureWhite,
-            fontWeight = FontWeight.Bold,
-          )
-          Spacer(modifier = Modifier.height(10.dp))
-          GlassInputField(
-            value = manualCodeInput,
-            onValueChange = { manualCodeInput = it },
-            label = stringResource(R.string.scanner_tab_manual),
-            placeholder = stringResource(R.string.scanner_manual_input_hint),
-            testTag = "scanner_manual_code_input",
-          )
-          Spacer(modifier = Modifier.height(14.dp))
-          GlassButton(
-            text = stringResource(R.string.scanner_manual_submit),
-            icon = Icons.Default.CheckCircle,
-            enabled = manualCodeInput.isNotBlank() && selectedService != null,
-            onClick = {
-              if (selectedService != null) {
-                onScanOrSubmitCode(manualCodeInput, selectedService, "manual")
-              }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            testTag = "scanner_manual_submit_btn",
-          )
+        else -> {
+          PremiumGlassCard(
+            cornerRadius = 22.dp,
+            contentPadding = PaddingValues(18.dp),
+          ) {
+            Text(
+              text = stringResource(R.string.scanner_manual_input_label),
+              style = MaterialTheme.typography.titleMedium,
+              color = PureWhite,
+              fontWeight = FontWeight.Bold,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            GlassInputField(
+              value = manualCodeInput,
+              onValueChange = { manualCodeInput = it },
+              label = stringResource(R.string.scanner_tab_manual),
+              placeholder = stringResource(R.string.scanner_manual_input_hint),
+              testTag = "scanner_manual_code_input",
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            GlassButton(
+              text = stringResource(R.string.scanner_manual_submit),
+              icon = Icons.Default.CheckCircle,
+              enabled = manualCodeInput.isNotBlank() && selectedService != null,
+              onClick = {
+                if (selectedService != null) {
+                  onScanOrSubmitCode(manualCodeInput, selectedService, "manual")
+                }
+              },
+              modifier = Modifier.fillMaxWidth(),
+              testTag = "scanner_manual_submit_btn",
+            )
+          }
         }
       }
 
+      val unlinkedNfcUid =
+        lastScannedNfcToken?.takeIf {
+          scanMode == "nfc_scan" &&
+            it.startsWith("NFC-UID:", ignoreCase = true) &&
+            validationOutcome is ScannerValidationOutcome.ValidationError &&
+            validationOutcome.errorType == AttendanceErrorType.INVALID_QR
+        }
+
       AttendanceValidationResultCard(
         outcome = validationOutcome,
+        unlinkedNfcUid = unlinkedNfcUid,
+        canBindNfcToMember = onBindNfcCardToMember != null && churchMembers.isNotEmpty(),
+        onBindNfcClick = { showBindNfcMemberSheet = true },
         onScanNextClick = {
           manualCodeInput = ""
+          lastScannedNfcToken = null
           onResetOutcome()
         },
       )
@@ -308,6 +428,349 @@ fun AdminQRScannerScreen(
             )
           }
         }
+      }
+    }
+  }
+
+  if (showBindNfcMemberSheet && onBindNfcCardToMember != null) {
+    val rawUid = lastScannedNfcToken.orEmpty().removePrefix("NFC-UID:").trim()
+    val filteredMembers =
+      remember(churchMembers, nfcBindSearchQuery) {
+        val q = nfcBindSearchQuery.trim().lowercase()
+        if (q.isEmpty()) churchMembers
+        else {
+          churchMembers.filter {
+            it.effectiveFullName.lowercase().contains(q) ||
+              it.effectiveMatrikil.lowercase().contains(q) ||
+              it.department.lowercase().contains(q)
+          }
+        }
+      }
+
+    GlassModalBottomSheet(
+      onDismissRequest = { showBindNfcMemberSheet = false },
+      title = "Lye Kat NFC ($rawUid)",
+    ) {
+      Text(
+        text = "Chwazi manm nan pou asosye kat NFC sa a avèk li pou pwochen eskanè yo:",
+        style = MaterialTheme.typography.bodySmall,
+        color = MutedGlassText,
+      )
+      Spacer(modifier = Modifier.height(10.dp))
+      GlassInputField(
+        value = nfcBindSearchQuery,
+        onValueChange = { nfcBindSearchQuery = it },
+        label = "Chèche non oswa Matrikil...",
+        leadingIcon = Icons.Default.Search,
+        testTag = "nfc_bind_member_search",
+      )
+      Spacer(modifier = Modifier.height(10.dp))
+      LazyColumn(
+        modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        items(filteredMembers, key = { it.id }) { mem ->
+          PremiumGlassCard(
+            cornerRadius = 14.dp,
+            contentPadding = PaddingValues(12.dp),
+            onClick = {
+              onBindNfcCardToMember(mem.id, rawUid) {
+                showBindNfcMemberSheet = false
+                nfcBindSearchQuery = ""
+                val srv = selectedService
+                if (srv != null && lastScannedNfcToken != null) {
+                  onResetOutcome()
+                  onScanOrSubmitCode(lastScannedNfcToken!!, srv, "nfc_scan")
+                } else {
+                  onResetOutcome()
+                }
+              }
+            },
+          ) {
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f),
+              ) {
+                MemberAvatar3D(
+                  fullName = mem.effectiveFullName,
+                  size = 40.dp,
+                  photoUrl = mem.effectivePhotoUrl,
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                  Text(
+                    text = mem.effectiveFullName,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = PureWhite,
+                    fontWeight = FontWeight.Bold,
+                  )
+                  Text(
+                    text = "${mem.effectiveMatrikil} • ${mem.department.ifBlank { "Manm" }}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MutedGlassText,
+                  )
+                }
+              }
+              Icon(
+                imageVector = Icons.Default.Link,
+                contentDescription = "Lye kat",
+                tint = BrandGold,
+                modifier = Modifier.size(20.dp),
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun ScannerModeTabBar(
+  selectedMode: String,
+  onSelectMode: (String) -> Unit,
+) {
+  Row(
+    modifier =
+      Modifier.fillMaxWidth()
+        .clip(RoundedCornerShape(18.dp))
+        .background(Color(0x9906132E))
+        .border(1.dp, GlassWhite.copy(alpha = 0.22f), RoundedCornerShape(18.dp))
+        .padding(4.dp),
+    horizontalArrangement = Arrangement.spacedBy(5.dp),
+  ) {
+    ScannerModePill(
+      label = stringResource(R.string.scanner_tab_qr),
+      icon = Icons.Default.QrCodeScanner,
+      selected = selectedMode == "qr_scan",
+      onClick = { onSelectMode("qr_scan") },
+      testTag = "scanner_tab_qr_scan",
+      modifier = Modifier.weight(1f),
+    )
+    ScannerModePill(
+      label = stringResource(R.string.scanner_tab_nfc),
+      icon = Icons.Default.Nfc,
+      selected = selectedMode == "nfc_scan",
+      onClick = { onSelectMode("nfc_scan") },
+      testTag = "scanner_tab_nfc",
+      modifier = Modifier.weight(1f),
+    )
+    ScannerModePill(
+      label = "Kòd Manm",
+      icon = Icons.Default.Keyboard,
+      selected = selectedMode == "manual",
+      onClick = { onSelectMode("manual") },
+      testTag = "scanner_tab_manual",
+      modifier = Modifier.weight(1f),
+    )
+  }
+}
+
+@Composable
+private fun ScannerModePill(
+  label: String,
+  icon: ImageVector,
+  selected: Boolean,
+  onClick: () -> Unit,
+  testTag: String,
+  modifier: Modifier = Modifier,
+) {
+  val bgMod =
+    if (selected) {
+      Modifier.shadow(8.dp, RoundedCornerShape(14.dp), ambientColor = ElectricBlue)
+        .clip(RoundedCornerShape(14.dp))
+        .background(OmniBrushes.ActiveBlueNeonBrush)
+        .border(1.dp, PureWhite.copy(alpha = 0.72f), RoundedCornerShape(14.dp))
+    } else {
+      Modifier.clip(RoundedCornerShape(14.dp))
+    }
+
+  Row(
+    modifier =
+      modifier
+        .then(bgMod)
+        .clickable(onClick = onClick)
+        .padding(horizontal = 6.dp, vertical = 11.dp)
+        .testTag(testTag),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.Center,
+  ) {
+    Icon(
+      imageVector = icon,
+      contentDescription = label,
+      tint = if (selected) PureWhite else MutedGlassText,
+      modifier = Modifier.size(16.dp),
+    )
+    Spacer(modifier = Modifier.width(5.dp))
+    Text(
+      text = label,
+      style = MaterialTheme.typography.labelMedium,
+      color = if (selected) PureWhite else MutedGlassText,
+      fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+  }
+}
+
+@Composable
+private fun NfcTapViewportCard(
+  isNfcSupported: Boolean,
+  isNfcEnabled: Boolean,
+  hasActiveService: Boolean,
+  lastScannedToken: String?,
+  onOpenNfcSettings: () -> Unit,
+) {
+  val infiniteTransition = rememberInfiniteTransition(label = "nfc_radar")
+  val pulseScale by
+    infiniteTransition.animateFloat(
+      initialValue = 0.85f,
+      targetValue = 1.25f,
+      animationSpec =
+        infiniteRepeatable(
+          animation = tween(durationMillis = 1500, easing = LinearEasing),
+          repeatMode = RepeatMode.Restart,
+        ),
+      label = "nfc_pulse_scale",
+    )
+  val pulseAlpha by
+    infiniteTransition.animateFloat(
+      initialValue = 0.65f,
+      targetValue = 0.05f,
+      animationSpec =
+        infiniteRepeatable(
+          animation = tween(durationMillis = 1500, easing = LinearEasing),
+          repeatMode = RepeatMode.Restart,
+        ),
+      label = "nfc_pulse_alpha",
+    )
+
+  val isReadyToTap = isNfcSupported && isNfcEnabled && hasActiveService
+
+  PremiumGlassCard(
+    cornerRadius = 24.dp,
+    isHighlighted = isReadyToTap,
+    accentColor = if (isReadyToTap) BlueNeon else BrandOrange,
+    contentPadding = PaddingValues(22.dp),
+    modifier = Modifier.fillMaxWidth().testTag("nfc_scanner_viewport"),
+  ) {
+    Column(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+      Box(
+        modifier = Modifier.size(132.dp),
+        contentAlignment = Alignment.Center,
+      ) {
+        if (isReadyToTap) {
+          Box(
+            modifier =
+              Modifier.size(116.dp)
+                .scale(pulseScale)
+                .alpha(pulseAlpha)
+                .clip(CircleShape)
+                .border(2.dp, BlueNeon, CircleShape)
+          )
+          Box(
+            modifier =
+              Modifier.size(94.dp)
+                .clip(CircleShape)
+                .background(ElectricBlue.copy(alpha = 0.16f))
+                .border(1.2.dp, BlueNeon.copy(alpha = 0.45f), CircleShape)
+          )
+        }
+        Box(
+          modifier =
+            Modifier.size(72.dp)
+              .shadow(14.dp, CircleShape, ambientColor = if (isReadyToTap) BlueNeon else BrandOrange)
+              .clip(CircleShape)
+              .background(
+                if (isReadyToTap) OmniBrushes.ActiveBlueNeonBrush
+                else Brush.verticalGradient(listOf(BrandGold.copy(alpha = 0.3f), BrandOrange.copy(alpha = 0.25f)))
+              )
+              .border(1.5.dp, PureWhite.copy(alpha = 0.78f), CircleShape),
+          contentAlignment = Alignment.Center,
+        ) {
+          Icon(
+            imageVector = Icons.Default.Contactless,
+            contentDescription = stringResource(R.string.scanner_nfc_title),
+            tint = PureWhite,
+            modifier = Modifier.size(36.dp),
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(14.dp))
+
+      Text(
+        text = stringResource(R.string.scanner_nfc_title),
+        style = MaterialTheme.typography.titleLarge,
+        color = PureWhite,
+        fontWeight = FontWeight.ExtraBold,
+        textAlign = TextAlign.Center,
+      )
+
+      Spacer(modifier = Modifier.height(6.dp))
+
+      Text(
+        text =
+          when {
+            !isNfcSupported -> stringResource(R.string.scanner_nfc_unsupported)
+            !isNfcEnabled ->
+              "NFC fèmen nan paramèt telefòn lan. Aktive NFC pou w kapab tape kat manm yo."
+            !hasActiveService -> stringResource(R.string.scanner_no_active_service)
+            else -> stringResource(R.string.scanner_nfc_subtitle)
+          },
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (isReadyToTap) GlassWhite else BrandGold,
+        textAlign = TextAlign.Center,
+      )
+
+      Spacer(modifier = Modifier.height(14.dp))
+
+      if (isNfcSupported && !isNfcEnabled) {
+        GlassButton(
+          text = "Aktive NFC nan Paramèt",
+          icon = Icons.Default.Settings,
+          isPrimaryNeon = true,
+          onClick = onOpenNfcSettings,
+          modifier = Modifier.fillMaxWidth(),
+          testTag = "nfc_open_settings_btn",
+        )
+      } else if (isReadyToTap) {
+        Row(
+          modifier =
+            Modifier.clip(RoundedCornerShape(50))
+              .background(SuccessGreen.copy(alpha = 0.18f))
+              .border(1.dp, SuccessGreen.copy(alpha = 0.65f), RoundedCornerShape(50))
+              .padding(horizontal = 14.dp, vertical = 7.dp),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(SuccessGreen))
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = stringResource(R.string.scanner_nfc_listening),
+            style = MaterialTheme.typography.labelMedium,
+            color = SuccessGreen,
+            fontWeight = FontWeight.Bold,
+          )
+        }
+      }
+
+      if (!lastScannedToken.isNullOrBlank()) {
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+          text = "Dènye lekti NFC: $lastScannedToken",
+          style = MaterialTheme.typography.labelSmall,
+          color = MutedGlassText,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
       }
     }
   }
@@ -529,7 +992,7 @@ private fun CameraXQrViewportCard(
             preview,
             imageAnalysis,
           )
-      } catch (e: Exception) {
+      } catch (_: Exception) {
       }
     }
 
@@ -674,6 +1137,9 @@ private fun CameraXQrViewportCard(
 @Composable
 private fun AttendanceValidationResultCard(
   outcome: ScannerValidationOutcome,
+  unlinkedNfcUid: String? = null,
+  canBindNfcToMember: Boolean = false,
+  onBindNfcClick: () -> Unit = {},
   onScanNextClick: () -> Unit,
 ) {
   val haptic = LocalHapticFeedback.current
@@ -899,6 +1365,16 @@ private fun AttendanceValidationResultCard(
           textAlign = TextAlign.Center,
           fontWeight = FontWeight.Bold,
         )
+        if (!unlinkedNfcUid.isNullOrBlank() && canBindNfcToMember) {
+          GlassButton(
+            text = "Lye Kat NFC (${unlinkedNfcUid.removePrefix("NFC-UID:")}) ak yon Manm",
+            icon = Icons.Default.Link,
+            isPrimaryNeon = true,
+            onClick = onBindNfcClick,
+            modifier = Modifier.fillMaxWidth(),
+            testTag = "nfc_bind_member_btn",
+          )
+        }
         GlassButton(
           text = stringResource(R.string.attendance_scan_next),
           isPrimaryNeon = false,

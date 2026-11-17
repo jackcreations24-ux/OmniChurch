@@ -1059,3 +1059,14 @@ fun PremiumSuccessPanel(
     }
   }
 }
+
+@Composable
+fun GlassLoadingIndicator(modifier: Modifier = Modifier) {
+  Box(
+    modifier = modifier.fillMaxWidth().padding(24.dp),
+    contentAlignment = Alignment.Center,
+  ) {
+    CircularProgressIndicator(color = BrandGold)
+  }
+}
+

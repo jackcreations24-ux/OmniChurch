@@ -28,6 +28,7 @@ import androidx.core.content.FileProvider
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.zoutiw.omnichurch.data.models.OmniSessionState
 import com.google.zxing.BarcodeFormat
@@ -39,54 +40,48 @@ import java.io.FileOutputStream
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withContext
 
 private val Context.omniSessionDataStore by
   preferencesDataStore(name = "omni_church_session_prefs")
 
 class OmniPreferencesManager(private val context: Context) {
+  // Persistent Session Keys (omni_church_session_prefs)
   private val keyActiveChurchId = stringPreferencesKey("activeChurchId")
   private val keyActiveRole = stringPreferencesKey("activeRole")
   private val keyActiveMemberId = stringPreferencesKey("activeMemberId")
   private val keyActiveMemberDocId = stringPreferencesKey("activeMemberDocId")
 
+  // Biometric Quick Unlock Keys
   private val keyBiometricEnabled = booleanPreferencesKey("biometricEnabled")
   private val keyBiometricChurchId = stringPreferencesKey("biometricChurchId")
   private val keyBiometricMemberId = stringPreferencesKey("biometricMemberId")
   private val keyBiometricMemberDocId = stringPreferencesKey("biometricMemberDocId")
   private val keyBiometricMemberName = stringPreferencesKey("biometricMemberName")
 
+  // Offline QR Cache & Localization Keys
   private val keyCachedQrToken = stringPreferencesKey("cached_barcode_token")
   private val keyCachedMemberCode = stringPreferencesKey("cached_member_code")
   private val keyCachedMemberName = stringPreferencesKey("cached_member_name")
   private val keyLanguageCode = stringPreferencesKey("omnichurch_lang_v1")
 
-  companion object {
-    private val immediateOverrideState = MutableStateFlow<OmniSessionState?>(null)
-  }
-
   val sessionStateFlow: Flow<OmniSessionState> =
-    merge(
-      immediateOverrideState.filterNotNull(),
-      context.omniSessionDataStore.data.map { prefs ->
-        OmniSessionState(
-          isInitialized = true,
-          activeChurchId = prefs[keyActiveChurchId].orEmpty(),
-          activeRole = prefs[keyActiveRole] ?: "member",
-          activeMemberId = prefs[keyActiveMemberId].orEmpty(),
-          activeMemberDocId = prefs[keyActiveMemberDocId].orEmpty(),
-          biometricEnabled = prefs[keyBiometricEnabled] ?: false,
-          biometricChurchId = prefs[keyBiometricChurchId].orEmpty(),
-          biometricMemberId = prefs[keyBiometricMemberId].orEmpty(),
-          biometricMemberDocId = prefs[keyBiometricMemberDocId].orEmpty(),
-          biometricMemberName = prefs[keyBiometricMemberName].orEmpty(),
-        )
-      }
-    )
+    context.omniSessionDataStore.data.map { prefs ->
+      OmniSessionState(
+        isInitialized = true,
+        activeChurchId = prefs[keyActiveChurchId].orEmpty(),
+        activeRole = prefs[keyActiveRole] ?: "member",
+        activeMemberId = prefs[keyActiveMemberId].orEmpty(),
+        activeMemberDocId = prefs[keyActiveMemberDocId].orEmpty(),
+        biometricEnabled = prefs[keyBiometricEnabled] ?: false,
+        biometricChurchId = prefs[keyBiometricChurchId].orEmpty(),
+        biometricMemberId = prefs[keyBiometricMemberId].orEmpty(),
+        biometricMemberDocId = prefs[keyBiometricMemberDocId].orEmpty(),
+        biometricMemberName = prefs[keyBiometricMemberName].orEmpty(),
+      )
+    }
 
   val cachedQrTokenFlow: Flow<String?> =
     context.omniSessionDataStore.data.map { prefs -> prefs[keyCachedQrToken] }
@@ -111,14 +106,6 @@ class OmniPreferencesManager(private val context: Context) {
     memberName: String = "",
     barcodeToken: String = "",
   ) {
-    val roleVal = if (activeRole == "admin") "admin" else "member"
-    immediateOverrideState.value = OmniSessionState(
-      isInitialized = true,
-      activeChurchId = activeChurchId.trim(),
-      activeRole = roleVal,
-      activeMemberId = activeMemberId.trim(),
-      activeMemberDocId = activeMemberDocId.trim(),
-    )
     context.omniSessionDataStore.edit { prefs ->
       prefs[keyActiveChurchId] = activeChurchId.trim()
       prefs[keyActiveRole] = if (activeRole == "admin") "admin" else "member"
@@ -129,6 +116,7 @@ class OmniPreferencesManager(private val context: Context) {
         prefs[keyCachedMemberCode] = activeMemberId.trim()
         prefs[keyCachedMemberName] = memberName.trim()
       }
+      // Keep biometric target synced if biometric quick unlock is already enabled
       if (prefs[keyBiometricEnabled] == true && activeMemberDocId.isNotBlank()) {
         prefs[keyBiometricChurchId] = activeChurchId.trim()
         prefs[keyBiometricMemberId] = activeMemberId.trim()
@@ -181,13 +169,6 @@ class OmniPreferencesManager(private val context: Context) {
   }
 
   suspend fun clearActiveSession() {
-    immediateOverrideState.value = OmniSessionState(
-      isInitialized = true,
-      activeChurchId = "",
-      activeRole = "member",
-      activeMemberId = "",
-      activeMemberDocId = "",
-    )
     context.omniSessionDataStore.edit { prefs ->
       prefs.remove(keyActiveChurchId)
       prefs.remove(keyActiveRole)
@@ -219,6 +200,81 @@ class OmniPreferencesManager(private val context: Context) {
       context.getSharedPreferences("omnichurch_prefs", Context.MODE_PRIVATE)
         .edit().putString("omnichurch_lang_v1", langCode).apply()
     } catch (_: Exception) {}
+  }
+
+  private fun sanitizeKeySegment(raw: String): String =
+    raw.trim().lowercase().replace(Regex("[^a-z0-9_-]"), "_")
+
+  suspend fun getSeenNotificationKeys(churchId: String, memberKey: String): Set<String> {
+    if (churchId.isBlank() || memberKey.isBlank()) return emptySet()
+    val prefKey =
+      stringSetPreferencesKey(
+        "seen_notif_keys_${sanitizeKeySegment(churchId)}_${sanitizeKeySegment(memberKey)}"
+      )
+    val prefs = context.omniSessionDataStore.data.first()
+    return prefs[prefKey] ?: emptySet()
+  }
+
+  suspend fun markNotificationKeysSeen(
+    churchId: String,
+    memberKey: String,
+    keys: Collection<String>,
+  ) {
+    if (churchId.isBlank() || memberKey.isBlank() || keys.isEmpty()) return
+    val prefKey =
+      stringSetPreferencesKey(
+        "seen_notif_keys_${sanitizeKeySegment(churchId)}_${sanitizeKeySegment(memberKey)}"
+      )
+    context.omniSessionDataStore.edit { prefs ->
+      val existing = prefs[prefKey] ?: emptySet()
+      prefs[prefKey] = (existing + keys).toList().takeLast(500).toSet()
+    }
+  }
+
+  suspend fun isFeedBaselineSeeded(churchId: String, memberKey: String): Boolean {
+    if (churchId.isBlank() || memberKey.isBlank()) return false
+    val prefKey =
+      booleanPreferencesKey(
+        "feed_baseline_seeded_${sanitizeKeySegment(churchId)}_${sanitizeKeySegment(memberKey)}"
+      )
+    val prefs = context.omniSessionDataStore.data.first()
+    return prefs[prefKey] == true
+  }
+
+  suspend fun markFeedBaselineSeeded(churchId: String, memberKey: String) {
+    if (churchId.isBlank() || memberKey.isBlank()) return
+    val prefKey =
+      booleanPreferencesKey(
+        "feed_baseline_seeded_${sanitizeKeySegment(churchId)}_${sanitizeKeySegment(memberKey)}"
+      )
+    context.omniSessionDataStore.edit { prefs -> prefs[prefKey] = true }
+  }
+
+  fun observeReadAnnouncementIds(churchId: String, memberKey: String): Flow<Set<String>> {
+    if (churchId.isBlank() || memberKey.isBlank()) {
+      return kotlinx.coroutines.flow.flowOf(emptySet())
+    }
+    val prefKey =
+      stringSetPreferencesKey(
+        "read_announcement_ids_${sanitizeKeySegment(churchId)}_${sanitizeKeySegment(memberKey)}"
+      )
+    return context.omniSessionDataStore.data.map { prefs -> prefs[prefKey] ?: emptySet() }
+  }
+
+  suspend fun markAnnouncementRead(
+    churchId: String,
+    memberKey: String,
+    announcementId: String,
+  ) {
+    if (churchId.isBlank() || memberKey.isBlank() || announcementId.isBlank()) return
+    val prefKey =
+      stringSetPreferencesKey(
+        "read_announcement_ids_${sanitizeKeySegment(churchId)}_${sanitizeKeySegment(memberKey)}"
+      )
+    context.omniSessionDataStore.edit { prefs ->
+      val existing = prefs[prefKey] ?: emptySet()
+      prefs[prefKey] = (existing + announcementId.trim()).toList().takeLast(500).toSet()
+    }
   }
 }
 
@@ -338,6 +394,11 @@ object LocaleHelper {
 }
 
 object QrCodeGenerator {
+  /**
+   * Generates a high-contrast pure white background QR code with dark modules and an optional
+   * subtle center OmniChurch flame emblem (using High error correction level H so scannability is
+   * 100% preserved under all lighting conditions).
+   */
   suspend fun generateQrBitmap(
     token: String,
     sizePx: Int = 768,
@@ -356,7 +417,7 @@ object QrCodeGenerator {
         val width = bitMatrix.width
         val height = bitMatrix.height
         val pixels = IntArray(width * height)
-        val darkModuleColor = Color.rgb(7, 21, 47)
+        val darkModuleColor = Color.rgb(7, 21, 47) // Deep OmniChurch Navy #07152F for crisp contrast
         for (y in 0 until height) {
           val offset = y * width
           for (x in 0 until width) {
@@ -397,6 +458,7 @@ object QrCodeGenerator {
     canvas.drawRoundRect(rect, corner, corner, bgPaint)
     canvas.drawRoundRect(rect, corner, corner, borderPaint)
 
+    // Left orange-gold flame wing
     val flamePaintLeft =
       Paint(Paint.ANTI_ALIAS_FLAG).apply {
         shader =
@@ -434,6 +496,7 @@ object QrCodeGenerator {
       }
     canvas.drawPath(leftPath, flamePaintLeft)
 
+    // Right electric-blue flame wing
     val flamePaintRight =
       Paint(Paint.ANTI_ALIAS_FLAG).apply {
         shader =
@@ -472,6 +535,10 @@ object QrCodeGenerator {
     canvas.drawPath(rightPath, flamePaintRight)
   }
 
+  /**
+   * Saves the member QR bitmap to the Android Gallery using MediaStore without requiring broad
+   * storage permissions.
+   */
   suspend fun saveQrToGallery(
     context: Context,
     bitmap: Bitmap,
@@ -513,12 +580,14 @@ object QrCodeGenerator {
       }
     }
 
+  /** Shares the QR bitmap and optional canonical verification link via Android FileProvider chooser. */
   suspend fun shareQrCardImage(
     context: Context,
     bitmap: Bitmap,
     memberName: String,
     memberCode: String,
     churchName: String,
+    verificationUrl: String? = null,
   ): Result<Unit> =
     withContext(Dispatchers.IO) {
       try {
@@ -529,14 +598,17 @@ object QrCodeGenerator {
           FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 
         withContext(Dispatchers.Main) {
+          val shareText =
+            if (!verificationUrl.isNullOrBlank()) {
+              "$churchName • $memberName (ID: $memberCode)\n$verificationUrl"
+            } else {
+              "$churchName • $memberName (ID: $memberCode)"
+            }
           val shareIntent =
             Intent(Intent.ACTION_SEND).apply {
               type = "image/png"
               putExtra(Intent.EXTRA_STREAM, uri)
-              putExtra(
-                Intent.EXTRA_TEXT,
-                "$churchName • $memberName (ID: $memberCode)",
-              )
+              putExtra(Intent.EXTRA_TEXT, shareText)
               addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
           val chooser =

@@ -101,6 +101,11 @@
     <string name="scanner_role_usher">Ouvriye</string>
     <string name="scanner_tab_qr">Eskane QR</string>
     <string name="scanner_tab_manual">Antre Kòd Manm</string>
+    <string name="scanner_tab_nfc">Kat NFC</string>
+    <string name="scanner_nfc_title">Lektè Kat NFC pou Prezans</string>
+    <string name="scanner_nfc_subtitle">Apwoche kat manm nan oswa braslè NFC a sou do telefòn lan pou verifye prezans lan otomatikman.</string>
+    <string name="scanner_nfc_unsupported">Aparèy sa a pa gen sipò NFC oswa NFC desaktive.</string>
+    <string name="scanner_nfc_listening">Ap koute kat NFC... Apwoche kat la koulye a.</string>
     <string name="scanner_select_service_label">Chwazi Sèvis (Aktif)</string>
     <string name="scanner_change_service">Chanje</string>
     <string name="scanner_open_for_attendance">Ouvri pou Prezans</string>

@@ -98,6 +98,7 @@ data class Member(
   val role: String = "member",
   val status: String = "active",
   val barcodeToken: String = "",
+  val nfcCardUid: String = "",
   val joinedAt: String = "",
   val joinDateFormatted: String? = null,
   val attendanceStreak: Int = 0,
@@ -405,6 +406,9 @@ object OmniAuthEvaluator {
     "Tanpri chwazi legliz ou a oswa antre yon ID Matrikil ki gen kòd legliz la (egzanp: CH001-JD4827)."
   const val ERROR_WRONG_ADMIN_PASSCODE =
     "Kòd Sekirite Administratè a pa kòrèk pou legliz sa a."
+  const val ERROR_EMPTY_EMAIL = "Tanpri antre adrès imèl legliz la oswa imèl administratè a."
+  const val ERROR_INVALID_EMAIL = "Adrès imèl sa a pa valid. Tanpri verifye fòma imèl la."
+  const val ERROR_EMPTY_PASSWORD = "Tanpri antre modpas kont legliz la."
 
   fun memberNotFoundMessage(idOrPhone: String, churchName: String): String =
     "Pa gen okenn manm ki anrejistre avèk ID/Telefòn \"${idOrPhone.trim()}\" nan legliz $churchName."
@@ -587,6 +591,91 @@ object OmniAuthEvaluator {
 
     val ownerUid = church.ownerId.trim()
     return !googleUid.isNullOrBlank() && ownerUid.isNotEmpty() && ownerUid == googleUid.trim()
+  }
+
+  fun isChurchEmailAdminAuthorized(
+    church: Church,
+    email: String?,
+    uid: String? = null,
+  ): Boolean {
+    val cleanEmail = (email ?: "").trim().lowercase()
+    val cleanUid = (uid ?: "").trim()
+    if (cleanEmail.isEmpty() && cleanUid.isEmpty()) return false
+    if (cleanEmail == SUPER_ADMIN_EMAIL) return true
+
+    val churchEmail = church.email.trim().lowercase()
+    val adminGoogleEmail = church.adminGoogleEmail.trim().lowercase()
+    val ownerUid = church.ownerId.trim()
+    val adminGoogleUid = (church.adminGoogleUid ?: "").trim()
+
+    return (cleanEmail.isNotEmpty() &&
+      ((churchEmail.isNotEmpty() && churchEmail == cleanEmail) ||
+        (adminGoogleEmail.isNotEmpty() && adminGoogleEmail == cleanEmail))) ||
+      (cleanUid.isNotEmpty() &&
+        ((ownerUid.isNotEmpty() && ownerUid == cleanUid) ||
+          (adminGoogleUid.isNotEmpty() && adminGoogleUid == cleanUid)))
+  }
+
+  fun resolveChurchForEmailPasswordLogin(
+    churches: List<Church>,
+    email: String?,
+    uid: String?,
+    selectedChurchId: String? = null,
+    profileChurchId: String? = null,
+    profileRole: String? = null,
+  ): Result<Church> {
+    val cleanEmail = (email ?: "").trim().lowercase()
+    val cleanUid = (uid ?: "").trim()
+    val cleanSelected = (selectedChurchId ?: "").trim()
+    val cleanProfileChurchId = (profileChurchId ?: "").trim()
+    val isProfileAdmin =
+      profileRole?.trim()?.lowercase() in listOf("admin", "super_admin")
+
+    fun matchesUserProfile(church: Church): Boolean {
+      if (!isProfileAdmin || cleanProfileChurchId.isEmpty()) return false
+      return church.id.trim().equals(cleanProfileChurchId, ignoreCase = true) ||
+        church.code.trim().equals(cleanProfileChurchId, ignoreCase = true)
+    }
+
+    fun isAuthorizedForChurch(church: Church): Boolean {
+      return isChurchEmailAdminAuthorized(church, cleanEmail, cleanUid) ||
+        matchesUserProfile(church)
+    }
+
+    if (cleanSelected.isNotEmpty()) {
+      val selectedChurch = resolveChurchForMemberLogin(churches, cleanSelected, null)
+      if (selectedChurch != null && isAuthorizedForChurch(selectedChurch)) {
+        return Result.success(selectedChurch)
+      }
+    }
+
+    val directMatch =
+      churches.firstOrNull { church ->
+        (cleanEmail.isNotEmpty() &&
+          (church.email.trim().equals(cleanEmail, ignoreCase = true) ||
+            church.adminGoogleEmail.trim().equals(cleanEmail, ignoreCase = true))) ||
+          (cleanUid.isNotEmpty() &&
+            (church.ownerId.trim() == cleanUid ||
+              church.adminGoogleUid?.trim() == cleanUid))
+      }
+    if (directMatch != null) {
+      return Result.success(directMatch)
+    }
+
+    val profileMatch = churches.firstOrNull { matchesUserProfile(it) }
+    if (profileMatch != null) {
+      return Result.success(profileMatch)
+    }
+
+    if (cleanEmail == SUPER_ADMIN_EMAIL && churches.isNotEmpty()) {
+      return Result.success(churches.first())
+    }
+
+    return Result.failure(
+      OmniAuthException(
+        "Okenn legliz pa jwenn oswa pa otorize pou imèl \"$cleanEmail\". Verifye imèl admin legliz la."
+      )
+    )
   }
 }
 

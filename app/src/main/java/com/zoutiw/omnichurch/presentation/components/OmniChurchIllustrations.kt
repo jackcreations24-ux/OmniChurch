@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,6 +56,11 @@ import com.zoutiw.omnichurch.ui.theme.PrimaryNavy
 import com.zoutiw.omnichurch.ui.theme.PureWhite
 import com.zoutiw.omnichurch.ui.theme.RoyalBlue
 
+/**
+ * ASSET 01 + ASSET 02 — Official OmniChurch Mobile Brand Header.
+ * Uses the official transparent PNG assets (`omnichurch_flame` and `omnichurch_wordmark`)
+ * while preserving original aspect ratios.
+ */
 @Composable
 fun OmniChurchBrandHeader(
   badgeText: String,
@@ -62,6 +68,7 @@ fun OmniChurchBrandHeader(
   modifier: Modifier = Modifier,
 ) {
   if (!isProStyle) {
+    // Official Home / Login / Splash Brand Header with Flame + 3D OmniChurch Mobile Wordmark
     Row(
       modifier = modifier,
       verticalAlignment = Alignment.CenterVertically,
@@ -77,6 +84,7 @@ fun OmniChurchBrandHeader(
       )
     }
   } else {
+    // Pro Card Header style (Flame emblem + "OmniChurch" / "Pro" for Member ID Card)
     Row(
       modifier = modifier,
       verticalAlignment = Alignment.CenterVertically,
@@ -102,6 +110,10 @@ fun OmniChurchBrandHeader(
   }
 }
 
+/**
+ * ASSET 01 — Official Standalone OmniChurch Flame Symbol (`R.drawable.omnichurch_flame`)
+ * with subtle 3D ambient lighting glow.
+ */
 @Composable
 fun OmniChurch3DFlameIcon(size: Dp = 36.dp, modifier: Modifier = Modifier) {
   Box(
@@ -136,6 +148,11 @@ fun OmniChurch3DFlameIcon(size: Dp = 36.dp, modifier: Modifier = Modifier) {
   }
 }
 
+/**
+ * ASSET 03 — Official Cinematic Home Background (`R.drawable.omnichurch_home_bg`)
+ * featuring modern church architecture, illuminated golden cross, sunset sky,
+ * and blue/orange neon light waves, with controlled dark gradient overlay for text contrast.
+ */
 @Composable
 fun OmniChurchSanctuaryHeroCanvas(
   modifier: Modifier = Modifier,
@@ -154,6 +171,7 @@ fun OmniChurchSanctuaryHeroCanvas(
       Canvas(modifier = Modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
+        // Controlled dark navy scrim on left side so white & orange welcome typography is crisp
         drawRect(
           brush =
             Brush.horizontalGradient(
@@ -167,6 +185,7 @@ fun OmniChurchSanctuaryHeroCanvas(
               endX = w * 0.65f,
             )
         )
+        // Smooth bottom transition into DeepBackgroundGradient (PrimaryNavy / DeepNavy)
         drawRect(
           brush =
             Brush.verticalGradient(
@@ -185,6 +204,10 @@ fun OmniChurchSanctuaryHeroCanvas(
   }
 }
 
+/**
+ * Renders a vibrant 3D worship service stage banner when a service document does not provide an
+ * external image URL.
+ */
 @Composable
 fun WorshipStageBannerCanvas(modifier: Modifier = Modifier) {
   Box(modifier = modifier) {
@@ -210,6 +233,7 @@ fun WorshipStageBannerCanvas(modifier: Modifier = Modifier) {
           )
       )
 
+      // Stage spotlights
       drawCircle(
         brush =
           Brush.radialGradient(
@@ -241,6 +265,7 @@ fun WorshipStageBannerCanvas(modifier: Modifier = Modifier) {
         center = Offset(w * 0.75f, h * 0.25f),
       )
 
+      // Soundwave / worship horizon arcs
       val cx = w * 0.5f
       for (i in 1..3) {
         drawArc(
@@ -257,6 +282,11 @@ fun WorshipStageBannerCanvas(modifier: Modifier = Modifier) {
   }
 }
 
+/**
+ * Renders a circular 3D member avatar with metallic/neon ring, real photograph support
+ * (`photoUrl` as either a PC/Web Base64 Data URL `data:image/...;base64,...` or an HTTP/HTTPS URL),
+ * initials fallback, and optional verified green badge.
+ */
 @Composable
 fun MemberAvatar3D(
   fullName: String,
@@ -340,6 +370,11 @@ fun MemberAvatar3D(
   }
 }
 
+/**
+ * Compact 3D Premium Google Icon Button (`Premium3DGoogleIconButton`).
+ * Replaces bulky wide Google login buttons with a realistic 3D glass-and-pearl orb
+ * containing the official 4-color 3D Google 'G' emblem and an optional subtle caption.
+ */
 @Composable
 fun Premium3DGoogleIconButton(
   onClick: () -> Unit,
@@ -389,12 +424,14 @@ fun Premium3DGoogleIconButton(
           .testTag(testTag),
       contentAlignment = Alignment.Center,
     ) {
+      // Inner 3D pearl disc + 4-color Google 'G' vector canvas
       Canvas(modifier = Modifier.size(size * 0.68f)) {
         val w = this.size.width
         val h = this.size.height
         val center = Offset(w / 2f, h / 2f)
         val radius = w * 0.48f
 
+        // 3D Pearl White Inner Sphere with subtle top-left specular sheen
         drawCircle(
           brush =
             Brush.linearGradient(
@@ -406,11 +443,13 @@ fun Premium3DGoogleIconButton(
           center = center,
         )
 
+        // Official 4-color Google 'G' arcs inside the pearl sphere
         val gStroke = w * 0.165f
         val arcRadius = w * 0.27f
         val arcTopLeft = Offset(center.x - arcRadius, center.y - arcRadius)
         val arcSize = Size(arcRadius * 2f, arcRadius * 2f)
 
+        // Red top arc (215° to 315°)
         drawArc(
           color = Color(0xFFEA4335),
           startAngle = 210f,
@@ -420,6 +459,7 @@ fun Premium3DGoogleIconButton(
           size = arcSize,
           style = Stroke(width = gStroke, cap = StrokeCap.Butt),
         )
+        // Yellow left arc (145° to 215°)
         drawArc(
           color = Color(0xFFFBBC05),
           startAngle = 142f,
@@ -429,6 +469,7 @@ fun Premium3DGoogleIconButton(
           size = arcSize,
           style = Stroke(width = gStroke, cap = StrokeCap.Butt),
         )
+        // Green bottom arc (45° to 145°)
         drawArc(
           color = Color(0xFF34A853),
           startAngle = 42f,
@@ -438,6 +479,7 @@ fun Premium3DGoogleIconButton(
           size = arcSize,
           style = Stroke(width = gStroke, cap = StrokeCap.Butt),
         )
+        // Blue right arc (-12° to 45°)
         drawArc(
           color = Color(0xFF4285F4),
           startAngle = -12f,
@@ -447,6 +489,7 @@ fun Premium3DGoogleIconButton(
           size = arcSize,
           style = Stroke(width = gStroke, cap = StrokeCap.Butt),
         )
+        // Horizontal blue crossbar of 'G'
         drawLine(
           color = Color(0xFF4285F4),
           start = Offset(center.x, center.y),

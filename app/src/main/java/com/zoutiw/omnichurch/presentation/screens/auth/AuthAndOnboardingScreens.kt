@@ -29,16 +29,21 @@ import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +61,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,6 +79,7 @@ import com.zoutiw.omnichurch.data.models.OmniSessionState
 import com.zoutiw.omnichurch.presentation.components.GlassButton
 import com.zoutiw.omnichurch.presentation.components.GlassInputField
 import com.zoutiw.omnichurch.presentation.components.GlassModalBottomSheet
+import com.zoutiw.omnichurch.presentation.components.GlassSegmentedControl
 import com.zoutiw.omnichurch.presentation.components.OmniChurchBrandHeader
 import com.zoutiw.omnichurch.presentation.components.OmniChurchSanctuaryHeroCanvas
 import com.zoutiw.omnichurch.presentation.components.Premium3DGoogleIconButton
@@ -238,6 +245,16 @@ fun OmniChurchAuthPortalScreen(
     googleEmail: String?,
     googleUid: String?,
   ) -> Unit,
+  onLoginAdminWithEmailAndPassword: (
+    selectedChurchId: String?,
+    email: String,
+    password: String,
+  ) -> Unit = { _, _, _ -> },
+  onSendAdminPasswordReset: (
+    email: String,
+    onSent: (String) -> Unit,
+    onError: (String) -> Unit,
+  ) -> Unit = { _, _, _ -> },
   currentLanguageCode: String = "ht",
   onSelectLanguage: (String) -> Unit = {},
   modifier: Modifier = Modifier,
@@ -248,13 +265,19 @@ fun OmniChurchAuthPortalScreen(
   val credentialManager = remember(context) { CredentialManager.create(context) }
 
   var isMemberMode by remember { mutableStateOf(true) }
+  var isAdminEmailMode by remember { mutableStateOf(true) }
   var selectedChurchId by remember { mutableStateOf<String?>(null) }
   var showChurchSelectorSheet by remember { mutableStateOf(false) }
 
   var matrikilOrPhoneInput by remember { mutableStateOf("") }
   var memberPinInput by remember { mutableStateOf("") }
 
+  var adminEmailInput by remember { mutableStateOf("") }
+  var adminPasswordInput by remember { mutableStateOf("") }
+  var isAdminPasswordVisible by remember { mutableStateOf(false) }
+
   var adminPasscodeInput by remember { mutableStateOf("") }
+  var isAdminPasscodeVisible by remember { mutableStateOf(false) }
   var adminGooglePayload by remember { mutableStateOf<GoogleAccountPayload?>(null) }
 
   var pendingGoogleLinkPayload by remember { mutableStateOf<GoogleAccountPayload?>(null) }
@@ -262,6 +285,7 @@ fun OmniChurchAuthPortalScreen(
   var linkPinInput by remember { mutableStateOf("") }
 
   var localError by remember { mutableStateOf<String?>(null) }
+  var resetFeedbackMessage by remember { mutableStateOf<String?>(null) }
   val displayedError = localError ?: errorFeedback
 
   LaunchedEffect(churches) {
@@ -470,8 +494,10 @@ fun OmniChurchAuthPortalScreen(
             text =
               if (isMemberMode) {
                 "Antre ID Matrikil ou ak Kòd Sekirite (PIN) administrasyon legliz la ba ou a. Ou pa bezwen kont Google."
+              } else if (isAdminEmailMode) {
+                "Konekte ak imèl ak modpas kont legliz la pou jere manm yo, sèvis yo ak prezans yo."
               } else {
-                " Konekte avèk Kòd Sekirite Administratè legliz la oswa Kont Google Administratè ki otorize a."
+                "Konekte avèk Kòd Sekirite Administratè legliz la oswa Kont Google Administratè ki otorize a."
               },
             style = MaterialTheme.typography.bodySmall,
             color = GlassWhite.copy(alpha = 0.85f),
@@ -664,95 +690,267 @@ fun OmniChurchAuthPortalScreen(
               testTag = "optional_google_login_button",
             )
           } else {
-            GlassInputField(
-              value = adminPasscodeInput,
-              onValueChange = {
-                adminPasscodeInput = it
+            GlassSegmentedControl(
+              leftLabel = "Imèl + Modpas",
+              rightLabel = "Kòd / Google",
+              isLeftSelected = isAdminEmailMode,
+              onSelectLeft = {
+                isAdminEmailMode = true
                 localError = null
+                resetFeedbackMessage = null
                 onClearFeedback()
               },
-              label = "Kòd Sekirite Administratè Legliz la",
-              placeholder = "Antre Admin Passcode legliz la",
-              leadingIcon = Icons.Default.Lock,
-              visualTransformation = PasswordVisualTransformation(),
-              keyboardType = KeyboardType.Password,
-              testTag = "admin_passcode_input",
-            )
-
-            GlassButton(
-              text = "Antre nan Espas Administratè",
-              icon = Icons.Default.AdminPanelSettings,
-              isPrimaryNeon = true,
-              onClick = {
+              onSelectRight = {
+                isAdminEmailMode = false
                 localError = null
+                resetFeedbackMessage = null
                 onClearFeedback()
-                val targetChurchId = resolvedChurch?.id ?: selectedChurchId.orEmpty()
-                onLoginAdmin(
-                  targetChurchId,
-                  adminPasscodeInput,
-                  adminGooglePayload?.email,
-                  adminGooglePayload?.uid,
-                )
               },
-              modifier = Modifier.fillMaxWidth(),
-              testTag = "admin_login_submit_button",
+              leftIcon = Icons.Default.Email,
+              rightIcon = Icons.Default.Key,
+              leftTestTag = "admin_mode_email_tab",
+              rightTestTag = "admin_mode_code_tab",
             )
 
-            if (adminGooglePayload != null) {
-              Row(
-                modifier =
-                  Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(SuccessGreen.copy(alpha = 0.16f))
-                    .border(1.dp, SuccessGreen.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-                    .padding(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-              ) {
-                Icon(
-                  imageVector = Icons.Default.CheckCircle,
-                  contentDescription = null,
-                  tint = SuccessGreen,
-                  modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                  text = "Google Admin: ${adminGooglePayload!!.email}",
-                  style = MaterialTheme.typography.bodySmall,
-                  color = PureWhite,
-                )
+            if (isAdminEmailMode) {
+              if (resetFeedbackMessage != null) {
+                Box(
+                  modifier =
+                    Modifier.fillMaxWidth()
+                      .clip(RoundedCornerShape(14.dp))
+                      .background(SuccessGreen.copy(alpha = 0.18f))
+                      .border(1.dp, SuccessGreen, RoundedCornerShape(14.dp))
+                      .padding(12.dp)
+                      .testTag("admin_reset_success_banner")
+                ) {
+                  Text(
+                    text = resetFeedbackMessage!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PureWhite,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                  )
+                }
               }
-            }
 
-            Spacer(modifier = Modifier.height(2.dp))
+              GlassInputField(
+                value = adminEmailInput,
+                onValueChange = {
+                  adminEmailInput = it
+                  localError = null
+                  resetFeedbackMessage = null
+                  onClearFeedback()
+                },
+                label = "Imèl Legliz / Administratè",
+                placeholder = "egz: paste@leglizou.org",
+                leadingIcon = Icons.Default.Email,
+                keyboardType = KeyboardType.Email,
+                testTag = "admin_email_input",
+              )
 
-            Premium3DGoogleIconButton(
-              caption =
-                if (adminGooglePayload == null) "Google Admin"
-                else "Chanje (${adminGooglePayload!!.email})",
-              onClick = {
-                localError = null
-                onClearFeedback()
-                launchOptionalGoogleSignIn(
-                  context = context,
-                  credentialManager = credentialManager,
-                  scope = scope,
-                  onSuccess = { payload ->
-                    adminGooglePayload = payload
-                    val targetChurchId = resolvedChurch?.id ?: selectedChurchId.orEmpty()
-                    if (targetChurchId.isNotBlank()) {
-                      onLoginAdmin(
+              GlassInputField(
+                value = adminPasswordInput,
+                onValueChange = {
+                  adminPasswordInput = it
+                  localError = null
+                  resetFeedbackMessage = null
+                  onClearFeedback()
+                },
+                label = "Modpas Kont Legliz la",
+                placeholder = "Antre modpas legliz la",
+                leadingIcon = Icons.Default.Lock,
+                trailingIcon = {
+                  IconButton(
+                    onClick = { isAdminPasswordVisible = !isAdminPasswordVisible },
+                    modifier = Modifier.testTag("admin_password_visibility_toggle"),
+                  ) {
+                    Icon(
+                      imageVector =
+                        if (isAdminPasswordVisible) Icons.Default.VisibilityOff
+                        else Icons.Default.Visibility,
+                      contentDescription =
+                        if (isAdminPasswordVisible) "Kache modpas la" else "Montre modpas la",
+                      tint = BlueNeon,
+                    )
+                  }
+                },
+                visualTransformation =
+                  if (isAdminPasswordVisible) VisualTransformation.None
+                  else PasswordVisualTransformation(),
+                keyboardType = KeyboardType.Password,
+                testTag = "admin_password_input",
+              )
+
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+              ) {
+                Box(
+                  modifier =
+                    Modifier.minimumInteractiveComponentSize()
+                      .clip(RoundedCornerShape(10.dp))
+                      .clickable(enabled = !isAuthenticating) {
+                        localError = null
+                        resetFeedbackMessage = null
+                        onClearFeedback()
+                        onSendAdminPasswordReset(
+                          adminEmailInput,
+                          { msg -> resetFeedbackMessage = msg },
+                          { err -> localError = err },
+                        )
+                      }
+                      .padding(horizontal = 8.dp, vertical = 6.dp)
+                      .testTag("admin_forgot_password_button"),
+                  contentAlignment = Alignment.Center,
+                ) {
+                  Text(
+                    text = "Bliye modpas?",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = BrandGold,
+                    fontWeight = FontWeight.SemiBold,
+                  )
+                }
+              }
+
+              GlassButton(
+                text = "Konekte ak Imèl + Modpas",
+                icon = Icons.Default.AdminPanelSettings,
+                isPrimaryNeon = true,
+                isLoading = isAuthenticating,
+                accentColor = BrandOrange,
+                onClick = {
+                  localError = null
+                  resetFeedbackMessage = null
+                  onClearFeedback()
+                  val cleanEmail = adminEmailInput.trim()
+                  when {
+                    cleanEmail.isEmpty() -> localError = OmniAuthEvaluator.ERROR_EMPTY_EMAIL
+                    !cleanEmail.contains("@") || !cleanEmail.substringAfter("@").contains(".") ->
+                      localError = OmniAuthEvaluator.ERROR_INVALID_EMAIL
+                    adminPasswordInput.isBlank() ->
+                      localError = OmniAuthEvaluator.ERROR_EMPTY_PASSWORD
+                    else -> {
+                      val targetChurchId = resolvedChurch?.id ?: selectedChurchId
+                      onLoginAdminWithEmailAndPassword(
                         targetChurchId,
-                        adminPasscodeInput.takeIf { it.isNotBlank() },
-                        payload.email,
-                        payload.uid,
+                        cleanEmail,
+                        adminPasswordInput,
                       )
                     }
-                  },
-                  onError = { msg -> localError = msg },
-                )
-              },
-              testTag = "admin_google_verify_button",
-            )
+                  }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                testTag = "admin_email_login_button",
+              )
+            } else {
+              GlassInputField(
+                value = adminPasscodeInput,
+                onValueChange = {
+                  adminPasscodeInput = it
+                  localError = null
+                  onClearFeedback()
+                },
+                label = "Kòd Sekirite Administratè Legliz la",
+                placeholder = "Antre Admin Passcode legliz la",
+                leadingIcon = Icons.Default.Lock,
+                trailingIcon = {
+                  IconButton(
+                    onClick = { isAdminPasscodeVisible = !isAdminPasscodeVisible },
+                    modifier = Modifier.testTag("admin_passcode_visibility_toggle"),
+                  ) {
+                    Icon(
+                      imageVector =
+                        if (isAdminPasscodeVisible) Icons.Default.VisibilityOff
+                        else Icons.Default.Visibility,
+                      contentDescription =
+                        if (isAdminPasscodeVisible) "Kache kòd la" else "Montre kòd la",
+                      tint = BlueNeon,
+                    )
+                  }
+                },
+                visualTransformation =
+                  if (isAdminPasscodeVisible) VisualTransformation.None
+                  else PasswordVisualTransformation(),
+                keyboardType = KeyboardType.Password,
+                testTag = "admin_passcode_input",
+              )
+
+              GlassButton(
+                text = "Antre nan Espas Administratè",
+                icon = Icons.Default.AdminPanelSettings,
+                isPrimaryNeon = true,
+                isLoading = isAuthenticating,
+                onClick = {
+                  localError = null
+                  onClearFeedback()
+                  val targetChurchId = resolvedChurch?.id ?: selectedChurchId.orEmpty()
+                  onLoginAdmin(
+                    targetChurchId,
+                    adminPasscodeInput,
+                    adminGooglePayload?.email,
+                    adminGooglePayload?.uid,
+                  )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                testTag = "admin_login_submit_button",
+              )
+
+              if (adminGooglePayload != null) {
+                Row(
+                  modifier =
+                    Modifier.fillMaxWidth()
+                      .clip(RoundedCornerShape(12.dp))
+                      .background(SuccessGreen.copy(alpha = 0.16f))
+                      .border(1.dp, SuccessGreen.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                      .padding(10.dp),
+                  verticalAlignment = Alignment.CenterVertically,
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = SuccessGreen,
+                    modifier = Modifier.size(18.dp),
+                  )
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text(
+                    text = "Google Admin: ${adminGooglePayload!!.email}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PureWhite,
+                  )
+                }
+              }
+
+              Spacer(modifier = Modifier.height(2.dp))
+
+              Premium3DGoogleIconButton(
+                caption =
+                  if (adminGooglePayload == null) "Google Admin"
+                  else "Chanje (${adminGooglePayload!!.email})",
+                onClick = {
+                  localError = null
+                  onClearFeedback()
+                  launchOptionalGoogleSignIn(
+                    context = context,
+                    credentialManager = credentialManager,
+                    scope = scope,
+                    onSuccess = { payload ->
+                      adminGooglePayload = payload
+                      val targetChurchId = resolvedChurch?.id ?: selectedChurchId.orEmpty()
+                      if (targetChurchId.isNotBlank()) {
+                        onLoginAdmin(
+                          targetChurchId,
+                          adminPasscodeInput.takeIf { it.isNotBlank() },
+                          payload.email,
+                          payload.uid,
+                        )
+                      }
+                    },
+                    onError = { msg -> localError = msg },
+                  )
+                },
+                testTag = "admin_google_verify_button",
+              )
+            }
           }
 
           Spacer(modifier = Modifier.height(6.dp))

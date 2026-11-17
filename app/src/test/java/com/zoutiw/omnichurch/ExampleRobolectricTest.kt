@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.test.core.app.ApplicationProvider
-import com.zoutiw.omnichurch.core.utilities.ImageCompressor
 import com.zoutiw.omnichurch.core.utilities.LocaleHelper
 import com.zoutiw.omnichurch.core.utilities.OmniPreferencesManager
 import com.zoutiw.omnichurch.core.utilities.QrCodeGenerator
@@ -86,7 +85,7 @@ class ExampleRobolectricTest {
   @Test
   fun `ImageCompressor scales down bitmap to max 400x400 and returns valid data url`() {
     val bmp = android.graphics.Bitmap.createBitmap(800, 600, android.graphics.Bitmap.Config.ARGB_8888)
-    val base64 = ImageCompressor.compressBitmapToBase64(bmp, maxDimension = 400)
+    val base64 = com.zoutiw.omnichurch.core.utilities.ImageCompressor.compressBitmapToBase64(bmp, maxDimension = 400)
     assertTrue(base64.startsWith("data:image/jpeg;base64,"))
   }
 }

@@ -1,5 +1,6 @@
 package com.zoutiw.omnichurch
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -60,6 +61,7 @@ import androidx.navigation.compose.rememberNavController
 import com.zoutiw.omnichurch.core.network.FirestoreProvider
 import com.zoutiw.omnichurch.core.network.NamedFirestoreProvider
 import com.zoutiw.omnichurch.core.utilities.LocaleHelper
+import com.zoutiw.omnichurch.core.utilities.NfcIntentBus
 import com.zoutiw.omnichurch.core.utilities.OmniPreferencesManager
 import com.zoutiw.omnichurch.core.utilities.findActivity
 import com.zoutiw.omnichurch.data.models.Church
@@ -121,8 +123,10 @@ object OmniRoutes {
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
+    setTheme(R.style.Theme_MyApplication)
     super.onCreate(savedInstanceState)
     FirestoreProvider.ensureFirebaseInitialized(applicationContext)
+    NfcIntentBus.dispatch(intent)
     enableEdgeToEdge()
     setContent {
       val activityContext = this@MainActivity
@@ -147,6 +151,12 @@ class MainActivity : ComponentActivity() {
         }
       }
     }
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    NfcIntentBus.dispatch(intent)
   }
 }
 
@@ -181,6 +191,10 @@ fun OmniChurchRootHost(
           }
         }
     )
+
+  LaunchedEffect(currentUser?.uid) {
+    viewModel.syncAuthIdentity(currentUser?.uid.orEmpty())
+  }
 
   val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
   val isAuthenticating by viewModel.isAuthenticating.collectAsStateWithLifecycle()
@@ -246,6 +260,22 @@ fun OmniChurchRootHost(
           googleUid = googleUid,
           onSuccess = {},
           onError = { msg -> viewModel.setFeedbackMessage(msg) },
+        )
+      },
+      onLoginAdminWithEmailAndPassword = { selectedChurchId, email, password ->
+        viewModel.signInAdminWithEmailAndPassword(
+          email = email,
+          password = password,
+          selectedChurchId = selectedChurchId,
+          onSuccess = {},
+          onError = { msg -> viewModel.setFeedbackMessage(msg) },
+        )
+      },
+      onSendAdminPasswordReset = { email, onSent, onError ->
+        viewModel.sendAdminPasswordResetEmail(
+          email = email,
+          onSuccess = onSent,
+          onError = onError,
         )
       },
     )
@@ -576,9 +606,17 @@ private fun AuthenticatedOmniChurchWorkspace(
                 activeServices = activeAttendanceServices,
                 selectedServiceId = selectedScannerServiceId,
                 validationOutcome = scannerOutcome,
+                churchMembers = churchMembers,
                 onSelectService = { serviceId -> viewModel.selectScannerService(serviceId) },
                 onScanOrSubmitCode = { rawTokenOrCode, service, method ->
                   viewModel.processAttendanceScanOrCode(rawTokenOrCode, service, method)
+                },
+                onBindNfcCardToMember = { memberDocId, nfcCardUid, onLinked ->
+                  viewModel.bindNfcCardToMember(
+                    memberDocId = memberDocId,
+                    nfcCardUid = nfcCardUid,
+                    onSuccess = onLinked,
+                  )
                 },
                 onResetOutcome = { viewModel.resetScannerOutcome() },
                 onOpenServicesManagement = { navController.navigate(OmniRoutes.SERVICES) },

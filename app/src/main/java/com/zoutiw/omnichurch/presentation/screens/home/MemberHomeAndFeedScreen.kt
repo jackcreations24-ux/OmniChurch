@@ -1,5 +1,12 @@
 package com.zoutiw.omnichurch.presentation.screens.home
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,9 +24,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,29 +34,37 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Campaign
-import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -64,14 +79,20 @@ import com.zoutiw.omnichurch.data.models.ChurchService
 import com.zoutiw.omnichurch.data.models.Member
 import com.zoutiw.omnichurch.data.models.TargetReactionSummary
 import com.zoutiw.omnichurch.data.models.UserProfile
+import com.zoutiw.omnichurch.data.models.formatCreoleDateWithDay
 import com.zoutiw.omnichurch.presentation.components.CreateAnnouncementBottomSheet
 import com.zoutiw.omnichurch.presentation.components.CreateServiceBottomSheet
 import com.zoutiw.omnichurch.presentation.components.Floating3DReactionSelectorBar
+import com.zoutiw.omnichurch.presentation.components.GlassButton
+import com.zoutiw.omnichurch.presentation.components.GlassDialog
 import com.zoutiw.omnichurch.presentation.components.GlassInputField
 import com.zoutiw.omnichurch.presentation.components.GlassLoadingIndicator
 import com.zoutiw.omnichurch.presentation.components.GlassModalBottomSheet
 import com.zoutiw.omnichurch.presentation.components.MemberAvatar3D
 import com.zoutiw.omnichurch.presentation.components.Neumorphic3DActionButton
+import com.zoutiw.omnichurch.core.ads.EffectiveMobileAdMobState
+import com.zoutiw.omnichurch.core.ads.OmniAdPlacement
+import com.zoutiw.omnichurch.presentation.components.OmniAdMobBanner
 import com.zoutiw.omnichurch.presentation.components.OmniChurchBrandHeader
 import com.zoutiw.omnichurch.presentation.components.OmniChurchSanctuaryHeroCanvas
 import com.zoutiw.omnichurch.presentation.components.PremiumAnnouncementCard
@@ -80,12 +101,15 @@ import com.zoutiw.omnichurch.presentation.components.PremiumProfileCard
 import com.zoutiw.omnichurch.presentation.components.PremiumSectionHeader
 import com.zoutiw.omnichurch.presentation.components.PremiumServiceCard
 import com.zoutiw.omnichurch.presentation.components.Stacked3DReactionCluster
-import com.zoutiw.omnichurch.presentation.viewmodels.UiState
+import com.zoutiw.omnichurch.presentation.components.rememberFeedChromeNestedScrollConnection
+import com.zoutiw.omnichurch.presentation.navigation.UiState
 import com.zoutiw.omnichurch.ui.theme.BlueNeon
 import com.zoutiw.omnichurch.ui.theme.BrandGold
 import com.zoutiw.omnichurch.ui.theme.BrandOrange
+import com.zoutiw.omnichurch.ui.theme.DeepNavy
 import com.zoutiw.omnichurch.ui.theme.ElectricBlue
 import com.zoutiw.omnichurch.ui.theme.GlassWhite
+import com.zoutiw.omnichurch.ui.theme.LiveBadgeRed
 import com.zoutiw.omnichurch.ui.theme.MutedGlassText
 import com.zoutiw.omnichurch.ui.theme.OmniBrushes
 import com.zoutiw.omnichurch.ui.theme.PureWhite
@@ -107,33 +131,15 @@ fun MemberHomeScreen(
   onReactToItem: (targetId: String, isService: Boolean, reactionType: String) -> Unit,
   observeComments: (targetId: String) -> Flow<List<AnnouncementComment>>,
   onPostComment: (targetId: String, isService: Boolean, content: String) -> Unit,
-  onCreateAnnouncement: (title: String, content: String, department: String, isPinned: Boolean) -> Unit,
+  onCreateAnnouncement:
+    (
+      title: String,
+      content: String,
+      department: String,
+      isPinned: Boolean,
+      posterUrl: String?,
+    ) -> Unit,
   onCreateService: (
-    title: String,
-    category: String,
-    date: String,
-    startTime: String,
-    endTime: String,
-    theme: String?,
-    passage: String?,
-    leader: String?,
-    preacher: String?,
-    reader: String?,
-    musicians: String?,
-    ushers: String?,
-    isOpenForAttendance: Boolean,
-    sendReminder24h: Boolean,
-    lateToleranceMinutes: Long,
-    isLive: Boolean
-  ) -> Unit,
-  modifier: Modifier = Modifier,
-  reactionSummaries: Map<String, TargetReactionSummary> = emptyMap(),
-  onReactToComment: (commentId: String, reactionType: String) -> Unit = { _, _ -> },
-  onDeleteService: (serviceId: String) -> Unit = {},
-  onDeleteAnnouncement: (announcementId: String) -> Unit = {},
-  onSelectServiceCard: (String) -> Unit = {},
-  onUpdateService: (
-    serviceId: String,
     title: String,
     description: String?,
     dateFormatted: String,
@@ -151,8 +157,43 @@ fun MemberHomeScreen(
     reader: String?,
     musicians: String?,
     ushers: String?,
-  ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+    sendReminder24h: Boolean,
+    imageUrl: String?,
+  ) -> Unit,
+  modifier: Modifier = Modifier,
+  reactionSummaries: Map<String, TargetReactionSummary> = emptyMap(),
+  onReactToComment: (commentId: String, reactionType: String) -> Unit = { _, _ -> },
+  onDeleteService: (serviceId: String) -> Unit = {},
+  onDeleteAnnouncement: (announcementId: String) -> Unit = {},
   isAdminSession: Boolean = false,
+  canCreateService: Boolean = isAdminSession,
+  canEditService: Boolean = canCreateService,
+  onUpdateService: (
+    existingService: ChurchService,
+    title: String,
+    description: String?,
+    dateFormatted: String,
+    lateToleranceMinutes: Long,
+    isOpenForAttendance: Boolean,
+    category: String,
+    date: String,
+    startTime: String,
+    endTime: String,
+    theme: String?,
+    passage: String?,
+    leader: String?,
+    preacher: String?,
+    reader: String?,
+    musicians: String?,
+    ushers: String?,
+    sendReminder24h: Boolean,
+    imageUrl: String?,
+  ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+  churchMembers: List<Member> = emptyList(),
+  activeChurchName: String? = null,
+  isChromeVisible: Boolean = true,
+  onChromeVisibilityChange: (Boolean) -> Unit = {},
+  adMobState: EffectiveMobileAdMobState = EffectiveMobileAdMobState(),
 ) {
   val displayName =
     member?.effectiveFullName?.takeIf { it.isNotBlank() }
@@ -164,128 +205,166 @@ fun MemberHomeScreen(
     if (isAdmin) stringResource(R.string.home_admin_space)
     else stringResource(R.string.home_member_space)
   val churchDisplayName =
-    member?.churchName?.takeIf { it.isNotBlank() }
+    activeChurchName?.takeIf { it.isNotBlank() }
+      ?: member?.churchName?.takeIf { it.isNotBlank() }
       ?: userProfile?.churchName?.takeIf { it.isNotBlank() }
 
   var activeCommentTarget by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
   var showCreateAnnouncementDialog by remember { mutableStateOf(false) }
   var showCreateServiceDialog by remember { mutableStateOf(false) }
-  var serviceBeingEdited by remember { mutableStateOf<ChurchService?>(null) }
+  var editingService by remember { mutableStateOf<ChurchService?>(null) }
+
+  var currentEpochMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+  val allServices = (servicesState as? UiState.Success)?.data ?: emptyList()
+  val isLoadingFeed = servicesState is UiState.Loading
+  val servicesList =
+    remember(allServices, currentEpochMillis) {
+      allServices.filter { !it.isServiceEnded(currentEpochMillis) }
+    }
+  LaunchedEffect(allServices) {
+    currentEpochMillis = System.currentTimeMillis()
+    if (allServices.isNotEmpty()) {
+      while (true) {
+        delay(15_000L)
+        currentEpochMillis = System.currentTimeMillis()
+      }
+    }
+  }
+
+  val listState = rememberLazyListState()
+  val feedScrollConnection = rememberFeedChromeNestedScrollConnection(
+    listState = listState,
+    onChromeVisibilityChange = onChromeVisibilityChange,
+  )
+  val density = LocalDensity.current
+  var headerHeightPx by remember { mutableIntStateOf(0) }
+  val headerHeightDp = with(density) {
+    if (headerHeightPx > 0) headerHeightPx.toDp() else 124.dp
+  }
+  val isAtTop by remember {
+    derivedStateOf {
+      listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 24
+    }
+  }
+  val headerBackdropAlpha by animateFloatAsState(
+    targetValue = if (isAtTop) 0f else 0.94f,
+    animationSpec = tween(durationMillis = 160),
+    label = "home_header_backdrop",
+  )
 
   Box(
     modifier = modifier.fillMaxSize().background(OmniBrushes.DeepBackgroundGradient),
   ) {
+    // Flat full-bleed 3D Sanctuary Hero Backdrop (identical to Auth Screen)
     OmniChurchSanctuaryHeroCanvas(
       modifier = Modifier.fillMaxWidth().height(340.dp).align(Alignment.TopCenter),
       showLeftTextScrim = true,
     )
 
     LazyColumn(
-      modifier = Modifier.fillMaxSize().statusBarsPadding(),
-      contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 4.dp, bottom = 110.dp),
+      state = listState,
+      modifier = Modifier
+        .fillMaxSize()
+        .nestedScroll(feedScrollConnection),
+      contentPadding = PaddingValues(start = 2.dp, end = 2.dp, top = 4.dp, bottom = 110.dp),
       verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+      // 1–3. Top spacing for overlaid auto-hiding header + Church Hero Banner
       item {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-          Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            OmniChurchBrandHeader(
-              badgeText = stringResource(R.string.app_subtitle_mobile),
-              isProStyle = false,
-            )
-          }
-
-          Spacer(modifier = Modifier.height(4.dp))
-
-          PremiumProfileCard(
-            memberName = displayName,
-            subtitle = spaceSubtitle,
-            unreadNotificationsCount = unreadNotificationsCount,
-            photoUrl = memberPhotoUrl,
-            onProfileClick = onOpenProfile,
-            onNotificationsClick = onOpenNotifications,
-          )
-
-          Spacer(modifier = Modifier.height(22.dp))
-
-          HeroSanctuaryBannerCard(
-            churchName = churchDisplayName
-          )
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp),
+        ) {
+          Spacer(modifier = Modifier.height(headerHeightDp + 12.dp))
+          HeroSanctuaryBannerCard(churchName = churchDisplayName)
         }
       }
 
+      // 4. Dedicated "Kat Manm" (or "Lis Manm" for Admin) Borderless 3D Neumorphic Action Button
       item {
         Neumorphic3DActionButton(
           text = if (isAdmin) "Lis Manm" else stringResource(R.string.action_member_card),
           icon = if (isAdmin) Icons.Default.People else Icons.Default.Badge,
           onClick = if (isAdmin) onOpenMemberList else onOpenMemberCard,
-          modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(68.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp)
+            .height(68.dp),
           testTag = if (isAdmin) "quick_action_member_list" else "quick_action_member_card",
         )
       }
 
-      val isLoadingFeed =
-        servicesState is UiState.Loading && announcementsState is UiState.Loading
-      val servicesList = (servicesState as? UiState.Success)?.data ?: emptyList()
-      val announcementsList = (announcementsState as? UiState.Success)?.data ?: emptyList()
-
-      item {
-        Row(
-          modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-          if (isAdmin) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-              Box(
-                modifier = Modifier
-                  .clip(RoundedCornerShape(50))
-                  .background(ElectricBlue.copy(alpha = 0.25f))
-                  .border(1.dp, BlueNeon.copy(alpha = 0.6f), RoundedCornerShape(50))
-                  .clickable { showCreateServiceDialog = true }
-                  .padding(horizontal = 10.dp, vertical = 4.dp)
-              ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = BlueNeon, modifier = Modifier.size(15.dp))
-                  Spacer(modifier = Modifier.width(3.dp))
-                  Text(text = stringResource(R.string.feed_add_service), style = MaterialTheme.typography.labelSmall, color = PureWhite)
-                }
-              }
-              Box(
-                modifier = Modifier
-                  .clip(RoundedCornerShape(50))
-                  .background(ElectricBlue.copy(alpha = 0.25f))
-                  .border(1.dp, BlueNeon.copy(alpha = 0.6f), RoundedCornerShape(50))
-                  .clickable { showCreateAnnouncementDialog = true }
-                  .padding(horizontal = 10.dp, vertical = 4.dp)
-              ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = BlueNeon, modifier = Modifier.size(15.dp))
-                  Spacer(modifier = Modifier.width(3.dp))
-                  Text(text = stringResource(R.string.feed_add_announcement), style = MaterialTheme.typography.labelSmall, color = PureWhite)
-                }
-              }
-            }
-          } else {
-            Text(
-              text = stringResource(R.string.feed_section_title),
-              style = MaterialTheme.typography.headlineMedium,
-              color = PureWhite,
-              fontWeight = FontWeight.Bold,
-            )
-          }
+      // Remote-controlled AdMob Banner for Home Feed (renders 0.dp when disabled or Church is Pro Ad-Free)
+      if (adMobState.shouldShowBanner(OmniAdPlacement.HOME)) {
+        item(key = "home_admob_banner") {
+          OmniAdMobBanner(
+            placement = OmniAdPlacement.HOME,
+            adMobState = adMobState,
+          )
         }
       }
 
+      // 5. "Fil Aktyalite" Section Header + Admin Create Service Chip + "Tout >"
+      item {
+        PremiumSectionHeader(
+          title = stringResource(R.string.feed_section_title),
+          actionText = stringResource(R.string.feed_see_all),
+          onActionClick = onOpenServices,
+          modifier = Modifier.padding(horizontal = 14.dp),
+          trailingExtraContent =
+            if (canCreateService) {
+              {
+                Box(
+                  modifier =
+                    Modifier.padding(end = 10.dp)
+                      .clip(RoundedCornerShape(50))
+                      .background(ElectricBlue.copy(alpha = 0.25f))
+                      .border(1.dp, BlueNeon.copy(alpha = 0.6f), RoundedCornerShape(50))
+                      .clickable { showCreateServiceDialog = true }
+                      .padding(horizontal = 10.dp, vertical = 4.dp)
+                      .testTag("home_add_service_chip"),
+                ) {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                      imageVector = Icons.Default.Add,
+                      contentDescription = stringResource(R.string.feed_add_service),
+                      tint = BlueNeon,
+                      modifier = Modifier.size(15.dp),
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                      text = stringResource(R.string.feed_add_service),
+                      style = MaterialTheme.typography.labelSmall,
+                      color = PureWhite,
+                    )
+                  }
+                }
+              }
+            } else null,
+        )
+      }
+
+      // 6. Live Feed Items (Full-bleed 2.dp edge-to-edge active/upcoming Service Cards only — finished services live in Sèvis & Prezans)
+
       if (isLoadingFeed) {
-        item { GlassLoadingIndicator() }
-      } else if (servicesList.isEmpty() && announcementsList.isEmpty()) {
         item {
-          PremiumEmptyState(
-            title = stringResource(R.string.feed_empty_title),
-            subtitle = stringResource(R.string.feed_empty_subtitle),
-            icon = Icons.Default.Campaign,
-            modifier = Modifier.padding(horizontal = 16.dp)
-          )
+          Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
+            GlassLoadingIndicator()
+          }
+        }
+      } else if (servicesList.isEmpty()) {
+        item {
+          Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
+            PremiumEmptyState(
+              title = stringResource(R.string.feed_empty_title),
+              subtitle = stringResource(R.string.feed_empty_subtitle),
+              icon = Icons.Default.Campaign,
+              actionLabel =
+                if (canCreateService) stringResource(R.string.feed_add_service) else null,
+              onActionClick = if (canCreateService) ({ showCreateServiceDialog = true }) else null,
+            )
+          }
         }
       } else {
         items(servicesList, key = { "srv_${it.id}" }) { service ->
@@ -298,36 +377,71 @@ fun MemberHomeScreen(
             },
             onCommentClick = { activeCommentTarget = service.id to true },
             isAdmin = isAdmin,
+            canEdit = canEditService,
+            churchMembers = churchMembers,
+            onEditClick =
+              if (canEditService) {
+                { editingService = service }
+              } else null,
             onDeleteClick =
               if (isAdmin) {
                 { onDeleteService(service.id) }
               } else null,
-            onClick = { onSelectServiceCard(service.id) },
-            onEditClick = if (isAdmin) ({ serviceBeingEdited = service }) else null,
+          )
+        }
+      }
+    }
+
+    // Floating Auto-Hide/Show Top Header (synchronized with Bottom Menu on feed scroll)
+    AnimatedVisibility(
+      visible = isChromeVisible,
+      enter = slideInVertically(
+        initialOffsetY = { -it },
+        animationSpec = tween(durationMillis = 180),
+      ) + fadeIn(animationSpec = tween(durationMillis = 160)),
+      exit = slideOutVertically(
+        targetOffsetY = { -it },
+        animationSpec = tween(durationMillis = 180),
+      ) + fadeOut(animationSpec = tween(durationMillis = 140)),
+      modifier = Modifier.align(Alignment.TopCenter),
+    ) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .background(Color(0xFF061124).copy(alpha = headerBackdropAlpha))
+          .onSizeChanged { size ->
+            if (size.height > 0) headerHeightPx = size.height
+          }
+          .statusBarsPadding()
+          .padding(horizontal = 16.dp, vertical = 4.dp),
+      ) {
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+          OmniChurchBrandHeader(
+            badgeText = stringResource(R.string.app_subtitle_mobile),
+            isProStyle = false,
           )
         }
 
-        items(announcementsList, key = { "ann_${it.id}" }) { announcement ->
-          PremiumAnnouncementCard(
-            announcement = announcement,
-            reactionSummary = reactionSummaries[announcement.id],
-            onReactClick = { onReactToItem(announcement.id, false, "pray") },
-            onSelectReaction = { reactionType ->
-              onReactToItem(announcement.id, false, reactionType.key)
-            },
-            onCommentClick = { activeCommentTarget = announcement.id to false },
-            isAdmin = isAdmin,
-            onDeleteClick =
-              if (isAdmin) {
-                { onDeleteAnnouncement(announcement.id) }
-              } else null,
-            modifier = Modifier.padding(horizontal = 16.dp)
-          )
+        Spacer(modifier = Modifier.height(4.dp))
+
+        PremiumProfileCard(
+          memberName = displayName,
+          subtitle = spaceSubtitle,
+          unreadNotificationsCount = unreadNotificationsCount,
+          photoUrl = memberPhotoUrl,
+          onProfileClick = onOpenProfile,
+          onNotificationsClick = onOpenNotifications,
+        )
+
+        if (headerBackdropAlpha > 0.1f) {
+          Spacer(modifier = Modifier.height(6.dp))
+          HorizontalDivider(color = GlassWhite.copy(alpha = 0.12f), thickness = 0.8.dp)
         }
       }
     }
   }
 
+  // Comments Modal Bottom Sheet
   if (activeCommentTarget != null) {
     val (targetId, isService) = activeCommentTarget!!
     val comments by
@@ -340,193 +454,173 @@ fun MemberHomeScreen(
       onDismissRequest = { activeCommentTarget = null },
       title = stringResource(R.string.feed_comments_title, comments.size),
     ) {
-      Column(
-        modifier = Modifier
-          .fillMaxWidth()
-          .imePadding(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-      ) {
-        if (comments.isEmpty()) {
-          Box(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(vertical = 32.dp),
-            contentAlignment = Alignment.Center,
-          ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-              Icon(
-                imageVector = Icons.Default.ChatBubbleOutline,
-                contentDescription = null,
-                tint = MutedGlassText,
-                modifier = Modifier.size(42.dp),
-              )
-              Spacer(modifier = Modifier.height(10.dp))
-              Text(
-                text = stringResource(R.string.feed_no_comments),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MutedGlassText,
-                textAlign = TextAlign.Center,
-              )
-            }
-          }
-        } else {
-          LazyColumn(
-            modifier = Modifier
-              .fillMaxWidth()
-              .heightIn(max = 360.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-          ) {
-            items(comments, key = { it.id }) { comment ->
-              val commentReactionSummary = reactionSummaries[comment.id]
-              val isSelectorOpen = activeReactionCommentId == comment.id
+      if (comments.isEmpty()) {
+        Text(
+          text = stringResource(R.string.feed_no_comments),
+          style = MaterialTheme.typography.bodyMedium,
+          color = MutedGlassText,
+          modifier = Modifier.padding(vertical = 16.dp),
+        )
+      } else {
+        LazyColumn(
+          modifier = Modifier.fillMaxWidth().heightIn(max = 310.dp),
+          verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          items(comments, key = { it.id }) { comment ->
+            val commentReactionSummary = reactionSummaries[comment.id]
+            val isSelectorOpen = activeReactionCommentId == comment.id
 
-              Column(
-                modifier =
-                  Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0x550B1D3D))
-                    .border(1.dp, GlassWhite.copy(alpha = 0.16f), RoundedCornerShape(16.dp))
-                    .padding(12.dp),
+            Column(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .clip(RoundedCornerShape(14.dp))
+                  .background(Color(0x660B1D3D))
+                  .border(0.8.dp, GlassWhite.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+                  .padding(10.dp),
+            ) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.SpaceBetween,
               ) {
                 Row(
-                  modifier = Modifier.fillMaxWidth(),
                   verticalAlignment = Alignment.Top,
-                  horizontalArrangement = Arrangement.SpaceBetween,
+                  modifier = Modifier.weight(1f),
                 ) {
-                  Row(
-                    verticalAlignment = Alignment.Top,
-                    modifier = Modifier.weight(1f),
-                  ) {
-                    MemberAvatar3D(
-                      fullName = comment.userName,
-                      size = 38.dp,
-                      photoUrl = comment.userPhotoUrl,
+                  MemberAvatar3D(
+                    fullName = comment.userName,
+                    size = 34.dp,
+                    photoUrl = comment.userPhotoUrl,
+                  )
+                  Spacer(modifier = Modifier.width(10.dp))
+                  Column {
+                    Text(
+                      text = comment.userName,
+                      style = MaterialTheme.typography.labelLarge,
+                      color = BrandGold,
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                      Text(
-                        text = comment.userName,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = BrandGold,
-                        fontWeight = FontWeight.Bold,
-                      )
-                      Spacer(modifier = Modifier.height(2.dp))
-                      Text(
-                        text = comment.content,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = PureWhite,
-                      )
-                    }
+                    Text(
+                      text = comment.content,
+                      style = MaterialTheme.typography.bodyMedium,
+                      color = PureWhite,
+                    )
                   }
-
-                  Spacer(modifier = Modifier.width(8.dp))
-
-                  Stacked3DReactionCluster(
-                    reactionSummary = commentReactionSummary,
-                    fallbackCount = (commentReactionSummary?.totalCount ?: 0).toLong(),
-                    isCompact = true,
-                    onTriggerClick = {
-                      haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                      activeReactionCommentId =
-                        if (isSelectorOpen) null else comment.id
-                    },
-                    testTag = "comment_react_btn_${comment.id}",
-                  )
                 }
 
-                if (isSelectorOpen) {
-                  Spacer(modifier = Modifier.height(10.dp))
-                  Floating3DReactionSelectorBar(
-                    visible = true,
-                    selectedReaction = commentReactionSummary?.currentUserReaction,
-                    onSelectReaction = { chosenReaction ->
-                      onReactToComment(comment.id, chosenReaction.key)
-                      activeReactionCommentId = null
-                    },
-                    onDismiss = { activeReactionCommentId = null },
-                  )
-                }
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Stacked3DReactionCluster(
+                  reactionSummary = commentReactionSummary,
+                  fallbackCount = (commentReactionSummary?.totalCount ?: 0).toLong(),
+                  isCompact = true,
+                  onTriggerClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    activeReactionCommentId =
+                      if (isSelectorOpen) null else comment.id
+                  },
+                  testTag = "comment_react_btn_${comment.id}",
+                )
+              }
+
+              if (isSelectorOpen) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Floating3DReactionSelectorBar(
+                  visible = true,
+                  selectedReaction = commentReactionSummary?.currentUserReaction,
+                  onSelectReaction = { chosenReaction ->
+                    onReactToComment(comment.id, chosenReaction.key)
+                    activeReactionCommentId = null
+                  },
+                  onDismiss = { activeReactionCommentId = null },
+                )
               }
             }
           }
         }
+      }
 
-        HorizontalDivider(color = GlassWhite.copy(alpha = 0.16f))
-
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(10.dp),
+      Spacer(modifier = Modifier.height(14.dp))
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        GlassInputField(
+          value = commentInput,
+          onValueChange = { commentInput = it },
+          label = stringResource(R.string.feed_comment_hint),
+          modifier = Modifier.weight(1f),
+          testTag = "comment_input_field",
+        )
+        IconButton(
+          onClick = {
+            if (commentInput.isNotBlank()) {
+              onPostComment(targetId, isService, commentInput)
+              commentInput = ""
+            }
+          },
+          modifier =
+            Modifier.size(48.dp)
+              .clip(CircleShape)
+              .background(ElectricBlue)
+              .testTag("comment_send_button"),
         ) {
-          GlassInputField(
-            value = commentInput,
-            onValueChange = { commentInput = it },
-            label = stringResource(R.string.feed_comment_hint),
-            modifier = Modifier.weight(1f),
-            testTag = "comment_input_field",
+          Icon(
+            imageVector = Icons.AutoMirrored.Filled.Send,
+            contentDescription = stringResource(R.string.feed_comment_send),
+            tint = PureWhite,
           )
-
-          Box(
-            modifier =
-              Modifier.size(52.dp)
-                .shadow(10.dp, RoundedCornerShape(16.dp), ambientColor = BlueNeon)
-                .clip(RoundedCornerShape(16.dp))
-                .background(
-                  Brush.verticalGradient(listOf(Color(0xFF22ACFF), ElectricBlue, com.zoutiw.omnichurch.ui.theme.RoyalBlue))
-                )
-                .border(1.2.dp, PureWhite.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
-                .clickable {
-                  if (commentInput.isNotBlank()) {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onPostComment(targetId, isService, commentInput)
-                    commentInput = ""
-                  }
-                }
-                .testTag("comment_send_button"),
-            contentAlignment = Alignment.Center,
-          ) {
-            Icon(
-              imageVector = Icons.AutoMirrored.Filled.Send,
-              contentDescription = stringResource(R.string.feed_comment_send),
-              tint = PureWhite,
-              modifier = Modifier.size(20.dp),
-            )
-          }
         }
       }
     }
   }
 
+  // Admin Publish Announcement Bottom Sheet (Modern & Minimalist)
   if (showCreateAnnouncementDialog) {
     val servicesList = (servicesState as? UiState.Success)?.data ?: emptyList()
     CreateAnnouncementBottomSheet(
       onDismissRequest = { showCreateAnnouncementDialog = false },
       availableServices = servicesList,
-      onSubmit = { aTitle, aContent, aDept, aCategory, aDate, aAudience, aPinned, aToast, aToastLevel, aSchedNotif, aSchedDate, aPoster, aServiceId ->
-        onCreateAnnouncement(aTitle, aContent, aDept, aPinned)
+      onSubmit = { aTitle, aContent, aDept, _, _, _, aPinned, _, _, _, _, aPoster, _ ->
+        onCreateAnnouncement(aTitle, aContent, aDept, aPinned, aPoster)
       },
     )
   }
 
+  // Admin / Dyak Create Service Bottom Sheet (Modern & Minimalist)
   if (showCreateServiceDialog) {
     CreateServiceBottomSheet(
       onDismissRequest = { showCreateServiceDialog = false },
-      onSubmit = { sTitle, sCategory, sDate, sStartTime, sEndTime, sTheme, sPassage, sLeader, sPreacher, sReader, sMusicians, sUshers, sIsOpen, sSendReminder, sTol ->
-        onCreateService(sTitle, sCategory, sDate, sStartTime, sEndTime, sTheme, sPassage, sLeader, sPreacher, sReader, sMusicians, sUshers, sIsOpen, sSendReminder, sTol, true)
-      },
-    )
-  }
-
-  if (serviceBeingEdited != null) {
-    CreateServiceBottomSheet(
-      onDismissRequest = { serviceBeingEdited = null },
-      serviceToEdit = serviceBeingEdited,
-      onSubmit = { sTitle, sCategory, sDate, sStartTime, sEndTime, sTheme, sPassage, sLeader, sPreacher, sReader, sMusicians, sUshers, sIsOpen, sSendReminder, sTol ->
-        onUpdateService(
-          serviceBeingEdited!!.id,
+      churchMembers = churchMembers,
+      onSubmit = {
+        sTitle,
+        sCategory,
+        sDate,
+        sStartTime,
+        sEndTime,
+        sTheme,
+        sPassage,
+        sLeader,
+        sPreacher,
+        sReader,
+        sMusicians,
+        sUshers,
+        sIsOpen,
+        sSendReminder,
+        sTol,
+        sImageUrl ->
+        val timeSpan =
+          when {
+            sStartTime.isNotBlank() && sEndTime.isNotBlank() -> "$sStartTime - $sEndTime"
+            sStartTime.isNotBlank() -> sStartTime
+            else -> ""
+          }
+        val naturalDate = formatCreoleDateWithDay(sDate)
+        val sDateFormatted =
+          if (timeSpan.isNotBlank()) "$naturalDate • $timeSpan" else naturalDate
+        onCreateService(
           sTitle,
           sTheme,
-          "$sDate • $sStartTime",
+          sDateFormatted,
           sTol,
           sIsOpen,
           true,
@@ -541,6 +635,66 @@ fun MemberHomeScreen(
           sReader,
           sMusicians,
           sUshers,
+          sSendReminder,
+          sImageUrl,
+        )
+      },
+    )
+  }
+
+  // Admin / Dyak Edit Service Bottom Sheet
+  if (editingService != null) {
+    val targetService = editingService!!
+    CreateServiceBottomSheet(
+      onDismissRequest = { editingService = null },
+      churchMembers = churchMembers,
+      initialService = targetService,
+      onSubmit = {
+        sTitle,
+        sCategory,
+        sDate,
+        sStartTime,
+        sEndTime,
+        sTheme,
+        sPassage,
+        sLeader,
+        sPreacher,
+        sReader,
+        sMusicians,
+        sUshers,
+        sIsOpen,
+        sSendReminder,
+        sTol,
+        sImageUrl ->
+        val timeSpan =
+          when {
+            sStartTime.isNotBlank() && sEndTime.isNotBlank() -> "$sStartTime - $sEndTime"
+            sStartTime.isNotBlank() -> sStartTime
+            else -> ""
+          }
+        val naturalDate = formatCreoleDateWithDay(sDate)
+        val sDateFormatted =
+          if (timeSpan.isNotBlank()) "$naturalDate • $timeSpan" else naturalDate
+        onUpdateService(
+          targetService,
+          sTitle,
+          sTheme,
+          sDateFormatted,
+          sTol,
+          sIsOpen,
+          sCategory,
+          sDate,
+          sStartTime,
+          sEndTime,
+          sTheme,
+          sPassage,
+          sLeader,
+          sPreacher,
+          sReader,
+          sMusicians,
+          sUshers,
+          sSendReminder,
+          sImageUrl,
         )
       },
     )
@@ -549,6 +703,8 @@ fun MemberHomeScreen(
 
 @Composable
 private fun HeroSanctuaryBannerCard(churchName: String?) {
+  val resolvedChurchTitle =
+    churchName?.trim()?.takeIf { it.isNotBlank() } ?: "OmniChurch"
   Column(
     modifier =
       Modifier.fillMaxWidth()
@@ -569,21 +725,10 @@ private fun HeroSanctuaryBannerCard(churchName: String?) {
               fontWeight = FontWeight.ExtraBold,
             )
           ) {
-            append(stringResource(R.string.home_hero_title))
+            append(resolvedChurchTitle)
           }
         },
-      style = MaterialTheme.typography.displayMedium.copy(fontSize = 28.sp),
-    )
-    Spacer(modifier = Modifier.height(4.dp))
-    Text(
-      text =
-        if (!churchName.isNullOrBlank()) {
-          "${stringResource(R.string.home_hero_tagline)} • $churchName"
-        } else {
-          stringResource(R.string.home_hero_tagline)
-        },
-      style = MaterialTheme.typography.bodyMedium,
-      color = GlassWhite.copy(alpha = 0.92f),
+      style = MaterialTheme.typography.displayMedium.copy(fontSize = 28.sp, lineHeight = 34.sp),
     )
   }
 }

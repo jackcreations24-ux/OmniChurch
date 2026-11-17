@@ -3,11 +3,13 @@
     <!-- Native Android Splash Screen Theme using launch_background drawable -->
     <style name="Theme.OmniChurch.Splash" parent="android:Theme.DeviceDefault.NoActionBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
-        <item name="android:statusBarColor">@android:color/black</item>
-        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:statusBarColor">#030B1C</item>
+        <item name="android:navigationBarColor">#030B1C</item>
     </style>
 
     <style name="Theme.MyApplication" parent="android:Theme.DeviceDefault.NoActionBar">
-        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowBackground">#030B1C</item>
+        <item name="android:statusBarColor">#030B1C</item>
+        <item name="android:navigationBarColor">#030B1C</item>
     </style>
 </resources>
