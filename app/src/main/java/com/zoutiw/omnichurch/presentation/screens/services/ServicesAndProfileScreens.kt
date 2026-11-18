@@ -42,6 +42,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.Button
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -135,7 +136,7 @@ import com.zoutiw.omnichurch.presentation.components.Stacked3DReactionCluster
 import com.zoutiw.omnichurch.presentation.components.rememberFeedChromeNestedScrollConnection
 import com.zoutiw.omnichurch.presentation.components.shareOmniChurchContent
 import com.zoutiw.omnichurch.presentation.components.shareOmniChurchGeneralApp
-import com.zoutiw.omnichurch.presentation.navigation.UiState
+import com.zoutiw.omnichurch.presentation.viewmodels.UiState
 import com.zoutiw.omnichurch.presentation.screens.auth.GoogleAccountPayload
 import com.zoutiw.omnichurch.presentation.screens.auth.launchOptionalGoogleSignIn
 import com.zoutiw.omnichurch.ui.theme.BlueNeon
@@ -2052,3 +2053,41 @@ private fun ReadOnlyMemberFieldRow(
     )
   }
 }
+
+@Composable
+fun ServiceDetailsScreen(
+  serviceId: String,
+  onBack: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Box(
+    modifier = modifier
+      .fillMaxSize()
+      .background(MaterialTheme.colorScheme.background)
+      .padding(16.dp),
+    contentAlignment = Alignment.Center,
+  ) {
+    Column(
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.Center,
+      modifier = Modifier.fillMaxWidth().padding(16.dp)
+    ) {
+      Text(
+        text = "Detay Sèvis",
+        style = MaterialTheme.typography.headlineMedium,
+        color = MaterialTheme.colorScheme.onBackground,
+      )
+      Spacer(modifier = Modifier.height(12.dp))
+      Text(
+        text = "ID Sèvis: $serviceId",
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+      )
+      Spacer(modifier = Modifier.height(24.dp))
+      Button(onClick = onBack) {
+        Text("Retounen")
+      }
+    }
+  }
+}
+

@@ -52,8 +52,7 @@ class AttendanceRepository(
 
     val isAuthorizedStaff =
       scannerUserProfile.isAuthorizedScanner ||
-        scannerUserProfile.role.lowercase() in listOf("admin", "usher", "super_admin", "staff") ||
-        true
+        scannerUserProfile.role.lowercase() in listOf("admin", "usher", "super_admin", "staff")
     if (!isAuthorizedStaff) {
       return ScannerValidationOutcome.ValidationError(AttendanceErrorType.UNAUTHORIZED)
     }
@@ -281,6 +280,46 @@ class AttendanceRepository(
           snapshot.documents
             .mapNotNull { it.toAttendanceRecord() }
             .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
+        }
+        .catch { error ->
+          handleFirestoreError(error, OperationType.LIST, path)
+          throw error
+        }
+    )
+  }
+
+  fun observeMemberAttendanceHistory(
+    churchId: String,
+    memberDocId: String,
+  ): Flow<List<com.zoutiw.omnichurch.data.models.MemberAttendanceHistoryItem>> = flow {
+    val path = "attendances"
+    emitAll(
+      db
+        .collection("attendances")
+        .whereEqualTo("churchId", churchId)
+        .whereEqualTo("memberDocId", memberDocId)
+        .snapshots()
+        .map { snapshot ->
+          snapshot.documents.mapNotNull { doc ->
+            val record = doc.toAttendanceRecord() ?: return@mapNotNull null
+            val timeMillis = record.timestamp ?: record.createdAt?.toDate()?.time ?: System.currentTimeMillis()
+            val dateLabel = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(timeMillis))
+            val timeLabel = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(timeMillis))
+            val statusEnum = when (record.status.lowercase()) {
+              "late", "an_reta" -> com.zoutiw.omnichurch.data.models.MemberAttendanceStatus.LATE
+              "absent", "absan" -> com.zoutiw.omnichurch.data.models.MemberAttendanceStatus.ABSENT
+              "excused", "ekskize" -> com.zoutiw.omnichurch.data.models.MemberAttendanceStatus.EXCUSED
+              else -> com.zoutiw.omnichurch.data.models.MemberAttendanceStatus.PRESENT
+            }
+            com.zoutiw.omnichurch.data.models.MemberAttendanceHistoryItem(
+              id = record.id.ifBlank { doc.id },
+              dateLabel = dateLabel,
+              timeLabel = timeLabel,
+              serviceTitle = record.serviceName.ifBlank { "Sèvis Adorasyon" },
+              status = statusEnum,
+              churchId = record.churchId,
+            )
+          }.sortedByDescending { it.dateLabel }
         }
         .catch { error ->
           handleFirestoreError(error, OperationType.LIST, path)

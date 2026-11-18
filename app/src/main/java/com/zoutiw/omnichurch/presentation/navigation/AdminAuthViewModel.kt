@@ -98,7 +98,7 @@ class AdminAuthViewModel(
     onSuccess: (Church) -> Unit,
   ) {
     if (_isBusy.value) return
-    if (church == null) {
+    val safeChurch = church ?: run {
       _authError.value = localizedSelectChurchFirst(languageCode)
       return
     }
@@ -106,7 +106,7 @@ class AdminAuthViewModel(
     _authError.value = null
     _infoMessage.value = null
     viewModelScope.launch {
-      val res = authRepository.signInAdminWithEmailPassword(church, email, password, languageCode)
+      val res = authRepository.signInAdminWithEmailAndPassword(safeChurch, email, password, languageCode)
       _isBusy.value = false
       res
         .onSuccess { authorizedChurch ->

@@ -86,7 +86,7 @@ import com.zoutiw.omnichurch.presentation.components.MemberAvatar3D
 import com.zoutiw.omnichurch.presentation.components.OmniChurchBrandHeader
 import com.zoutiw.omnichurch.presentation.components.PremiumEmptyState
 import com.zoutiw.omnichurch.presentation.components.PremiumGlassCard
-import com.zoutiw.omnichurch.presentation.navigation.UiState
+import com.zoutiw.omnichurch.presentation.viewmodels.UiState
 import com.zoutiw.omnichurch.ui.theme.BlueNeon
 import com.zoutiw.omnichurch.ui.theme.BrandGold
 import com.zoutiw.omnichurch.ui.theme.BrandOrange
@@ -702,6 +702,7 @@ private fun FlatAttendanceHistoryRow(
       MemberAttendanceStatus.PRESENT -> "Prezan" to SuccessGreen
       MemberAttendanceStatus.LATE -> "An Reta" to BrandGold
       MemberAttendanceStatus.ABSENT -> "Absan" to ErrorRed
+      MemberAttendanceStatus.EXCUSED -> "Ekskize" to BrandGold
     }
 
   Row(

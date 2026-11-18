@@ -74,42 +74,7 @@ fun SectionTitle(
   )
 }
 
-@Composable
-fun CategoryChip(
-  label: String,
-  isSelected: Boolean,
-  onClick: () -> Unit,
-  modifier: Modifier = Modifier,
-) {
-  val shape = RoundedCornerShape(12.dp)
-  Box(
-    modifier =
-      modifier
-        .minimumInteractiveComponentSize()
-        .clip(shape)
-        .background(
-          if (isSelected) OmniBrushes.ActiveBlueNeonBrush
-          else Brush.horizontalGradient(listOf(Color(0xFF132241), Color(0xFF0E1A33)))
-        )
-        .border(
-          width = 1.dp,
-          color = if (isSelected) BlueNeon else GlassWhite.copy(alpha = 0.22f),
-          shape = shape,
-        )
-        .clickable(onClick = onClick)
-        .padding(horizontal = 8.dp, vertical = 8.dp),
-    contentAlignment = Alignment.Center,
-  ) {
-    Text(
-      text = label,
-      style = MaterialTheme.typography.labelMedium,
-      color = if (isSelected) PureWhite else GlassWhite,
-      fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-      maxLines = 1,
-      overflow = TextOverflow.Ellipsis,
-    )
-  }
-}
+
 
 @Composable
 fun MinimalTextField(
@@ -119,6 +84,7 @@ fun MinimalTextField(
   modifier: Modifier = Modifier,
   placeholder: String = "",
   leadingIcon: ImageVector? = null,
+  trailingIcon: (@Composable () -> Unit)? = null,
   singleLine: Boolean = true,
   keyboardType: KeyboardType = KeyboardType.Text,
   testTag: String? = null,
@@ -142,6 +108,7 @@ fun MinimalTextField(
           )
         }
       } else null,
+    trailingIcon = trailingIcon,
     singleLine = singleLine,
     keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
     shape = RoundedCornerShape(14.dp),
@@ -176,66 +143,7 @@ private fun OmniReactionType.drawableResId(): Int {
   }
 }
 
-@Composable
-fun Floating3DReactionSelectorBar(
-  visible: Boolean,
-  selectedReaction: OmniReactionType?,
-  onSelectReaction: (OmniReactionType) -> Unit,
-  onDismiss: () -> Unit,
-  modifier: Modifier = Modifier,
-) {
-  AnimatedVisibility(
-    visible = visible,
-    enter = fadeIn() + scaleIn(initialScale = 0.9f),
-    exit = fadeOut() + scaleOut(targetScale = 0.9f),
-    modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-  ) {
-    Row(
-      modifier =
-        Modifier.fillMaxWidth()
-          .shadow(12.dp, RoundedCornerShape(28.dp), ambientColor = ElectricBlue.copy(alpha = 0.4f))
-          .clip(RoundedCornerShape(28.dp))
-          .background(Brush.horizontalGradient(listOf(PrimaryNavy, Color(0xFF0E254D), PrimaryNavy)))
-          .border(1.dp, BlueNeon.copy(alpha = 0.6f), RoundedCornerShape(28.dp))
-          .padding(horizontal = 8.dp, vertical = 6.dp),
-      horizontalArrangement = Arrangement.SpaceEvenly,
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      OmniReactionType.entries.forEach { reaction ->
-        val isSelected = selectedReaction == reaction
-        Column(
-          horizontalAlignment = Alignment.CenterHorizontally,
-          modifier =
-            Modifier.clip(RoundedCornerShape(14.dp))
-              .background(if (isSelected) ElectricBlue.copy(alpha = 0.28f) else Color.Transparent)
-              .border(
-                width = if (isSelected) 1.dp else 0.dp,
-                color = if (isSelected) BrandGold else Color.Transparent,
-                shape = RoundedCornerShape(14.dp),
-              )
-              .clickable {
-                onSelectReaction(reaction)
-                onDismiss()
-              }
-              .padding(horizontal = 6.dp, vertical = 4.dp),
-        ) {
-          Image(
-            painter = painterResource(id = reaction.drawableResId()),
-            contentDescription = reaction.labelHt,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.size(28.dp),
-          )
-          Text(
-            text = reaction.labelHt,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-            color = if (isSelected) BrandGold else GlassWhite,
-            maxLines = 1,
-          )
-        }
-      }
-    }
-  }
-}
+
 
 @Composable
 fun Stacked3DReactionCluster(

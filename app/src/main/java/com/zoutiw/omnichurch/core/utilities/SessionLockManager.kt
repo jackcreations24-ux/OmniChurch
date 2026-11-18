@@ -8,6 +8,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.zoutiw.omnichurch.data.models.Church
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONObject
@@ -30,17 +31,19 @@ data class OwnershipEvaluationResult(
   val expectedOwnerEmail: String? = null,
 )
 
-/**
- * Manages persisted per-church Admin lock state, inactivity tracking, and strict multi-tenant
- * ownership evaluation so locked or mismatched admin sessions can never bypass re-authentication.
- */
-class SessionLockManager(private val context: Context) {
+class SessionLockManager(private val context: Context? = null) {
   private val keyLockedChurchesJson = stringPreferencesKey("locked_churches_json_v1")
   private val keyLastAdminBackgroundAtMs = longPreferencesKey("last_admin_background_at_ms_v1")
+  private val _inMemoryLockedChurches = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+  private val _inMemoryTimestamp = MutableStateFlow<Long?>(null)
 
   val lockedChurchesFlow: Flow<Map<String, Boolean>> =
-    context.omniAdminLockDataStore.data.map { prefs ->
-      parseLockedMap(prefs[keyLockedChurchesJson])
+    if (context != null) {
+      context.omniAdminLockDataStore.data.map { prefs ->
+        parseLockedMap(prefs[keyLockedChurchesJson])
+      }
+    } else {
+      _inMemoryLockedChurches
     }
 
   suspend fun isChurchAdminLocked(churchId: String): Boolean {
@@ -52,54 +55,84 @@ class SessionLockManager(private val context: Context) {
   suspend fun lockChurchAdminSession(churchId: String) {
     val cleanId = churchId.trim()
     if (cleanId.isEmpty()) return
-    context.omniAdminLockDataStore.edit { prefs ->
-      val current = parseLockedMap(prefs[keyLockedChurchesJson]).toMutableMap()
-      current[cleanId] = true
-      prefs[keyLockedChurchesJson] = serializeLockedMap(current)
+    if (context != null) {
+      context.omniAdminLockDataStore.edit { prefs ->
+        val current = parseLockedMap(prefs[keyLockedChurchesJson]).toMutableMap()
+        current[cleanId] = true
+        prefs[keyLockedChurchesJson] = serializeLockedMap(current)
+      }
+    } else {
+      _inMemoryLockedChurches.value = _inMemoryLockedChurches.value + (cleanId to true)
     }
   }
 
   suspend fun authorizeChurchAdminSession(churchId: String) {
     val cleanId = churchId.trim()
     if (cleanId.isEmpty()) return
-    context.omniAdminLockDataStore.edit { prefs ->
-      val current = parseLockedMap(prefs[keyLockedChurchesJson]).toMutableMap()
-      current[cleanId] = false
-      prefs[keyLockedChurchesJson] = serializeLockedMap(current)
-      prefs.remove(keyLastAdminBackgroundAtMs)
+    if (context != null) {
+      context.omniAdminLockDataStore.edit { prefs ->
+        val current = parseLockedMap(prefs[keyLockedChurchesJson]).toMutableMap()
+        current[cleanId] = false
+        prefs[keyLockedChurchesJson] = serializeLockedMap(current)
+        prefs.remove(keyLastAdminBackgroundAtMs)
+      }
+    } else {
+      _inMemoryLockedChurches.value = _inMemoryLockedChurches.value + (cleanId to false)
+      _inMemoryTimestamp.value = null
     }
   }
 
   suspend fun clearChurchAdminLock(churchId: String) {
     val cleanId = churchId.trim()
     if (cleanId.isEmpty()) return
-    context.omniAdminLockDataStore.edit { prefs ->
-      val current = parseLockedMap(prefs[keyLockedChurchesJson]).toMutableMap()
-      current.remove(cleanId)
-      prefs[keyLockedChurchesJson] = serializeLockedMap(current)
+    if (context != null) {
+      context.omniAdminLockDataStore.edit { prefs ->
+        val current = parseLockedMap(prefs[keyLockedChurchesJson]).toMutableMap()
+        current.remove(cleanId)
+        prefs[keyLockedChurchesJson] = serializeLockedMap(current)
+      }
+    } else {
+      _inMemoryLockedChurches.value = _inMemoryLockedChurches.value - cleanId
     }
   }
 
   suspend fun clearAllAdminLocks() {
-    context.omniAdminLockDataStore.edit { prefs ->
-      prefs.remove(keyLockedChurchesJson)
-      prefs.remove(keyLastAdminBackgroundAtMs)
+    if (context != null) {
+      context.omniAdminLockDataStore.edit { prefs ->
+        prefs.remove(keyLockedChurchesJson)
+        prefs.remove(keyLastAdminBackgroundAtMs)
+      }
+    } else {
+      _inMemoryLockedChurches.value = emptyMap()
+      _inMemoryTimestamp.value = null
     }
   }
 
   suspend fun recordAdminBackgroundTimestamp(epochMillis: Long = System.currentTimeMillis()) {
-    context.omniAdminLockDataStore.edit { prefs ->
-      prefs[keyLastAdminBackgroundAtMs] = epochMillis
+    if (context != null) {
+      context.omniAdminLockDataStore.edit { prefs ->
+        prefs[keyLastAdminBackgroundAtMs] = epochMillis
+      }
+    } else {
+      _inMemoryTimestamp.value = epochMillis
     }
   }
 
   suspend fun getLastAdminBackgroundTimestamp(): Long? {
-    return context.omniAdminLockDataStore.data.map { prefs -> prefs[keyLastAdminBackgroundAtMs] }.first()
+    return if (context != null) {
+      context.omniAdminLockDataStore.data.map { prefs -> prefs[keyLastAdminBackgroundAtMs] }.first()
+    } else {
+      _inMemoryTimestamp.value
+    }
   }
 
   suspend fun clearAdminBackgroundTimestamp() {
-    context.omniAdminLockDataStore.edit { prefs ->
-      prefs.remove(keyLastAdminBackgroundAtMs)
+    if (context != null) {
+      context.omniAdminLockDataStore.edit { prefs ->
+        prefs.remove(keyLastAdminBackgroundAtMs)
+      }
+    } else {
+      _inMemoryTimestamp.value = null
     }
   }
 
@@ -121,148 +154,82 @@ class SessionLockManager(private val context: Context) {
 
   private fun serializeLockedMap(map: Map<String, Boolean>): String {
     val json = JSONObject()
-    map.forEach { (k, v) ->
-      if (k.isNotBlank()) json.put(k, v)
+    for ((k, v) in map) {
+      json.put(k, v)
     }
     return json.toString()
   }
 
   companion object {
-    fun evaluateOwnership(
-      church: Church,
-      firebaseUser: FirebaseUser?,
-    ): OwnershipEvaluationResult =
-      evaluateOwnership(
-        church = church,
-        currentUserUid = firebaseUser?.uid,
-        currentUserEmail = firebaseUser?.email,
-      )
-
-    fun evaluateOwnership(
-      church: Church,
-      currentUserUid: String?,
-      currentUserEmail: String?,
-    ): OwnershipEvaluationResult {
-      val uid = currentUserUid?.trim().orEmpty()
-      val email = currentUserEmail?.trim().orEmpty()
-      if (uid.isEmpty() && email.isEmpty()) {
+    fun evaluateOwnership(church: Church, user: FirebaseUser?): OwnershipEvaluationResult {
+      if (user == null) {
         return OwnershipEvaluationResult(
           status = OwnershipEvaluationStatus.NO_AUTH_USER,
           isAuthorized = false,
-          expectedOwnerEmail = church.adminGoogleEmail?.trim()?.takeIf { it.isNotEmpty() },
         )
       }
-
+      val email = user.email?.trim()?.lowercase() ?: ""
+      val uid = user.uid.trim()
       if (CryptoSecurity.isSuperDeveloperAccount(email)) {
         return OwnershipEvaluationResult(
           status = OwnershipEvaluationStatus.SUPER_DEVELOPER,
           isAuthorized = true,
         )
       }
+      val ownerUid = church.ownerId.trim()
+      val adminGoogleUid = (church.adminGoogleUid ?: "").trim()
+      val adminGoogleEmail = church.adminGoogleEmail.trim().lowercase()
 
-      val churchAdminUid = church.adminGoogleUid?.trim().orEmpty()
-      val churchAdminEmail = church.adminGoogleEmail?.trim().orEmpty()
-
-      if (churchAdminUid.isNotEmpty() && uid.isNotEmpty() && churchAdminUid == uid) {
+      if (ownerUid.isNotEmpty() && ownerUid == uid) {
         return OwnershipEvaluationResult(
           status = OwnershipEvaluationStatus.MATCHED_UID,
           isAuthorized = true,
         )
       }
-
-      if (
-        churchAdminEmail.isNotEmpty() &&
-          email.isNotEmpty() &&
-          churchAdminEmail.equals(email, ignoreCase = true)
-      ) {
+      if (adminGoogleUid.isNotEmpty() && adminGoogleUid == uid) {
         return OwnershipEvaluationResult(
-          status = OwnershipEvaluationStatus.MATCHED_EMAIL_NEEDS_UID_HEAL,
+          status = OwnershipEvaluationStatus.MATCHED_UID,
           isAuthorized = true,
         )
       }
-
-      if (churchAdminUid.isEmpty() && churchAdminEmail.isEmpty()) {
+      if (adminGoogleEmail.isNotEmpty() && email.isNotEmpty() && adminGoogleEmail == email) {
+        return OwnershipEvaluationResult(
+          status = OwnershipEvaluationStatus.MATCHED_EMAIL_NEEDS_UID_HEAL,
+          isAuthorized = true,
+          expectedOwnerEmail = adminGoogleEmail,
+        )
+      }
+      if (ownerUid.isEmpty() && adminGoogleUid.isEmpty() && adminGoogleEmail.isEmpty()) {
         return OwnershipEvaluationResult(
           status = OwnershipEvaluationStatus.UNCLAIMED_LEGACY_CHURCH,
           isAuthorized = true,
         )
       }
-
       return OwnershipEvaluationResult(
         status = OwnershipEvaluationStatus.MISMATCHED_OWNER,
         isAuthorized = false,
-        expectedOwnerEmail = churchAdminEmail.takeIf { it.isNotEmpty() },
+        expectedOwnerEmail = adminGoogleEmail.ifEmpty { ownerUid },
       )
     }
 
-    /**
-     * Checks strict cloud owner identity match for `church`:
-     * Super Developer OR `adminGoogleUid == uid` OR `adminGoogleEmail == email`.
-     * Does NOT treat an unclaimed legacy church as already matching a cloud owner.
-     */
-    fun hasMatchingChurchCloudOwner(church: Church, firebaseUser: FirebaseUser?): Boolean =
-      hasMatchingChurchCloudOwner(church, firebaseUser?.uid, firebaseUser?.email)
-
-    fun hasMatchingChurchCloudOwner(
-      church: Church,
-      currentUserUid: String?,
-      currentUserEmail: String?,
-    ): Boolean {
-      val status = evaluateOwnership(church, currentUserUid, currentUserEmail).status
-      return status == OwnershipEvaluationStatus.SUPER_DEVELOPER ||
-        status == OwnershipEvaluationStatus.MATCHED_UID ||
-        status == OwnershipEvaluationStatus.MATCHED_EMAIL_NEEDS_UID_HEAL
+    fun canQuickPinUnlock(church: Church, user: FirebaseUser?): Boolean {
+      if (!church.quickPinEnabled) return false
+      val eval = evaluateOwnership(church, user)
+      return eval.isAuthorized
     }
 
-    /**
-     * Quick PIN Resume is ONLY allowed when:
-     * 1. `church.quickPinEnabled == true`
-     * 2. `!church.adminPasscode.isNullOrBlank()`
-     * 3. Firebase Auth currently has a live user matching the church's cloud owner (or Super Developer).
-     */
-    fun canQuickPinUnlock(church: Church, firebaseUser: FirebaseUser?): Boolean =
-      canQuickPinUnlock(church, firebaseUser?.uid, firebaseUser?.email)
-
-    fun canQuickPinUnlock(
-      church: Church,
-      currentUserUid: String?,
-      currentUserEmail: String?,
-    ): Boolean {
-      return church.quickPinEnabled == true &&
-        !church.adminPasscode.isNullOrBlank() &&
-        hasMatchingChurchCloudOwner(church, currentUserUid, currentUserEmail)
+    fun hasMatchingChurchCloudOwner(church: Church, user: FirebaseUser?): Boolean {
+      return com.zoutiw.omnichurch.data.models.OmniAuthEvaluator.hasMatchingChurchCloudOwner(church, user)
     }
 
-    /**
-     * Anti-bypass guard: returns true ONLY when the church is NOT locked in `lockedChurches`
-     * AND the active session satisfies cloud ownership (or legacy PIN-only church with explicit unlock).
-     */
     fun isChurchAdminAuthorized(
       church: Church,
       firebaseUser: FirebaseUser?,
       lockedChurches: Map<String, Boolean>,
-    ): Boolean =
-      isChurchAdminAuthorized(
-        church = church,
-        currentUserUid = firebaseUser?.uid,
-        currentUserEmail = firebaseUser?.email,
-        lockedChurches = lockedChurches,
-      )
-
-    fun isChurchAdminAuthorized(
-      church: Church,
-      currentUserUid: String?,
-      currentUserEmail: String?,
-      lockedChurches: Map<String, Boolean>,
     ): Boolean {
-      if (church.id.isBlank()) return false
-      if (lockedChurches[church.id] == true) return false
-      return if (church.hasCloudOwner) {
-        hasMatchingChurchCloudOwner(church, currentUserUid, currentUserEmail)
-      } else {
-        // Legacy PIN-only church without cloud owner yet requires explicit non-locked session
-        lockedChurches[church.id] == false
-      }
+      val isLocked = lockedChurches[church.id] == true
+      if (isLocked) return false
+      return evaluateOwnership(church, firebaseUser).isAuthorized
     }
   }
 }

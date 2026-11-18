@@ -779,6 +779,7 @@ fun GlassInputField(
   modifier: Modifier = Modifier,
   placeholder: String = "",
   leadingIcon: ImageVector? = null,
+  trailingIcon: (@Composable () -> Unit)? = null,
   visualTransformation: VisualTransformation = VisualTransformation.None,
   keyboardType: KeyboardType? = null,
   singleLine: Boolean = true,
@@ -808,6 +809,7 @@ fun GlassInputField(
           )
         }
       } else null,
+    trailingIcon = trailingIcon,
     visualTransformation = visualTransformation,
     singleLine = singleLine,
     keyboardOptions = effectiveKeyboardOptions,

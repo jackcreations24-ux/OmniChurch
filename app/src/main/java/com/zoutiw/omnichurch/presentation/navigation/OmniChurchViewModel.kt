@@ -16,6 +16,7 @@ import com.zoutiw.omnichurch.data.models.ChurchService
 import com.zoutiw.omnichurch.data.models.Member
 import com.zoutiw.omnichurch.data.models.OmniReactionType
 import com.zoutiw.omnichurch.data.models.OmniSessionState
+import com.zoutiw.omnichurch.data.models.MemberAttendanceHistoryItem
 import com.zoutiw.omnichurch.data.models.ScannerValidationOutcome
 import com.zoutiw.omnichurch.data.models.TargetReactionSummary
 import com.zoutiw.omnichurch.data.models.UserProfile
@@ -133,6 +134,20 @@ class OmniChurchViewModel(
       scope = viewModelScope,
       started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
       initialValue = UiState.Loading,
+    )
+
+  val memberAttendanceHistoryState: StateFlow<List<MemberAttendanceHistoryItem>> =
+    currentMemberState.flatMapLatest { memberState ->
+      val member = (memberState as? UiState.Success)?.data
+      if (member == null || member.id.isBlank()) {
+        flowOf(emptyList())
+      } else {
+        repository.attendanceRepository.observeMemberAttendanceHistory(member.churchId, member.id)
+      }
+    }.stateIn(
+      scope = viewModelScope,
+      started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+      initialValue = emptyList(),
     )
 
   val servicesState: StateFlow<UiState<List<ChurchService>>> =
@@ -650,6 +665,8 @@ class OmniChurchViewModel(
     churchId: String,
     churchName: String?,
     title: String,
+    description: String? = null,
+    dateFormatted: String = "",
     lateToleranceMinutes: Long,
     isOpenForAttendance: Boolean,
     isLive: Boolean,
@@ -666,15 +683,16 @@ class OmniChurchViewModel(
     musicians: String? = null,
     ushers: String? = null,
     sendReminder24h: Boolean = false,
+    imageUrl: String? = null,
   ) {
     viewModelScope.launch {
-      val dateFormatted = "$date • $startTime"
+      val effectiveDateFormatted = dateFormatted.ifBlank { "$date • $startTime" }
       repository.createService(
         churchId = churchId,
         churchName = churchName ?: "OmniChurch Pro",
         title = title,
-        description = null,
-        dateFormatted = dateFormatted,
+        description = description,
+        dateFormatted = effectiveDateFormatted,
         lateToleranceMinutes = lateToleranceMinutes,
         isOpenForAttendance = isOpenForAttendance,
         isLive = isLive,
@@ -692,6 +710,7 @@ class OmniChurchViewModel(
         musicians = musicians,
         ushers = ushers,
         sendReminder24h = sendReminder24h,
+        imageUrl = imageUrl,
       ).onSuccess {
         _actionFeedbackMessage.value = "Sèvis la kreye avèk siksè!"
       }.onFailure { err ->
@@ -704,28 +723,31 @@ class OmniChurchViewModel(
     serviceId: String,
     title: String,
     description: String?,
+    dateFormatted: String = "",
     lateToleranceMinutes: Long,
     isOpenForAttendance: Boolean,
-    isLive: Boolean,
-    category: String,
-    date: String,
-    startTime: String,
-    endTime: String,
-    theme: String?,
-    passage: String?,
-    leader: String?,
-    preacher: String?,
-    reader: String?,
-    musicians: String?,
-    ushers: String?,
+    isLive: Boolean = false,
+    category: String = "dimanche_matin",
+    date: String = "",
+    startTime: String = "",
+    endTime: String = "",
+    theme: String? = null,
+    passage: String? = null,
+    leader: String? = null,
+    preacher: String? = null,
+    reader: String? = null,
+    musicians: String? = null,
+    ushers: String? = null,
+    sendReminder24h: Boolean = false,
+    imageUrl: String? = null,
   ) {
     viewModelScope.launch {
-      val dateFormatted = "$date • $startTime"
+      val effectiveDateFormatted = dateFormatted.ifBlank { "$date • $startTime" }
       repository.updateService(
         serviceId = serviceId,
         title = title,
         description = description,
-        dateFormatted = dateFormatted,
+        dateFormatted = effectiveDateFormatted,
         lateToleranceMinutes = lateToleranceMinutes,
         isOpenForAttendance = isOpenForAttendance,
         isLive = isLive,

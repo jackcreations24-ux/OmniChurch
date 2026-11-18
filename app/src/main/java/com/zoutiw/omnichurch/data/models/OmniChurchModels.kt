@@ -1,6 +1,8 @@
 package com.zoutiw.omnichurch.data.models
 
 import com.google.firebase.Timestamp
+import com.google.firebase.auth.FirebaseUser
+import com.zoutiw.omnichurch.core.utilities.CryptoSecurity
 import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
@@ -43,6 +45,7 @@ data class Church(
   val pastor: String = "",
   val address: String = "",
   val city: String = "Ayiti",
+  val country: String = "Ayiti",
   val phone: String = "",
   val email: String = "",
   val motto: String = "",
@@ -66,9 +69,25 @@ data class Church(
   @JvmField @field:PropertyName("quickPinEnabled") val quickPinEnabled: Boolean = false,
   val autoLockMinutes: Int = 5,
   val adminPasscodeUpdatedAt: String? = null,
+  val rnc: String = "",
+  val rncVerified: Boolean = false,
+  val website: String = "",
+  val signatureUrl: String? = null,
 ) {
   val effectiveCode: String
     get() = code.trim().ifEmpty { id.trim() }
+
+  val isLegacyPinOnly: Boolean
+    get() = ownerId.isBlank() && adminGoogleEmail.isBlank() && adminPasscode.isNotBlank()
+
+  val hasCloudOwner: Boolean
+    get() = ownerId.isNotBlank() || adminGoogleEmail.isNotBlank() || adminGoogleUid?.isNotBlank() == true
+
+  val effectiveAutoLockMinutes: Int
+    get() = if (autoLockMinutes <= 0) 5 else autoLockMinutes
+
+  val effectiveQuickPinEnabled: Boolean
+    get() = quickPinEnabled && adminPasscode.isNotBlank()
 }
 
 @IgnoreExtraProperties
@@ -108,6 +127,11 @@ data class Member(
   val emergencyContact: String? = null,
   val joinedDate: String? = null,
   val notes: String = "",
+  val dateOfBirth: String? = null,
+  val baptismDate: String? = null,
+  val documentNumber: String? = null,
+  val documentType: String? = null,
+  val emergencyContactName: String? = null,
   @ServerTimestamp val createdAt: Timestamp? = null,
   @ServerTimestamp val updatedAt: Timestamp? = null,
 ) {
@@ -120,6 +144,27 @@ data class Member(
         memberCode.trim().ifEmpty { id.trim() }
       }
 
+  val effectiveMemberDbId: String
+    get() = id.trim().ifEmpty { memberId ?: "" }
+
+  val effectiveMemberCode: String
+    get() = memberCode.trim().ifEmpty { memberId ?: id }
+
+  val effectiveStatus: String
+    get() = status.trim().ifEmpty { "active" }
+
+  val isCrossChurchVisitor: Boolean
+    get() = false
+
+  val homeChurchName: String?
+    get() = churchName.takeIf { it.isNotBlank() }
+
+  val homeChurchId: String?
+    get() = churchId.takeIf { it.isNotBlank() }
+
+  val isFinishedForAbsence: Boolean
+    get() = false
+
   val effectivePhotoUrl: String?
     get() =
       avatarUrl?.trim()?.takeIf { it.isNotEmpty() }
@@ -128,6 +173,12 @@ data class Member(
 
   val effectiveBarcodeToken: String
     get() = barcodeToken.trim().ifEmpty { qrCode.trim().ifEmpty { effectiveMatrikil } }
+
+  val canonicalBarcodeDisplay: String
+    get() = effectiveBarcodeToken
+
+  val isUsherRole: Boolean
+    get() = role.trim().lowercase() in listOf("usher", "akèy", "accueil", "protocol", "staff", "admin", "super_admin")
 
   val effectiveJoinedDate: String
     get() =
@@ -246,6 +297,49 @@ data class ChurchService(
 ) {
   val effectiveTitle: String
     get() = title.ifBlank { name }
+
+  val effectiveDateOnly: String
+    get() = date.ifBlank { dateFormatted }
+
+  val effectiveImageUrl: String?
+    get() = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+
+  fun isPermanentlyLocked(now: Long = System.currentTimeMillis()): Boolean = status.equals("locked", ignoreCase = true) || status.equals("archived", ignoreCase = true)
+
+  fun isLiveBadgeActive(now: Long = System.currentTimeMillis()): Boolean = isLive || status.equals("live", ignoreCase = true)
+
+  fun isTimerTicking(now: Long = System.currentTimeMillis()): Boolean = isLive || isOpenForAttendance
+
+  fun isBeforeStart(now: Long = System.currentTimeMillis()): Boolean = startTimeEpochMillis > 0L && now < startTimeEpochMillis
+
+  fun isServiceEnded(nowMillis: Long = System.currentTimeMillis()): Boolean {
+    if (status.equals("ended", ignoreCase = true) || status.equals("closed", ignoreCase = true)) {
+      return true
+    }
+    return startTimeEpochMillis > 0L && nowMillis > (startTimeEpochMillis + 4 * 3_600_000L)
+  }
+
+  fun isFinishedForAbsence(now: Long = System.currentTimeMillis()): Boolean {
+    return isPermanentlyLocked(now) || now > (startTimeEpochMillis + 3_600_000L * 3)
+  }
+
+  val elapsedTimerLabel: String
+    get() = if (isLiveBadgeActive()) "LIVE KONTINYE" else if (isTimerTicking()) "LÈ POU ANREJISTRE" else dateFormatted.ifBlank { "Sèvis" }
+  fun elapsedTimerLabel(now: Long = System.currentTimeMillis()): String = elapsedTimerLabel
+
+  val effectiveScheduleLabel: String
+    get() = "$dateFormatted • $startTime".trim(' ', '•')
+  fun effectiveScheduleLabel(now: Long = System.currentTimeMillis()): String = effectiveScheduleLabel
+
+  val categoryLabelHt: String
+    get() = when (category.trim().lowercase()) {
+      "dimanche_matin", "sunday_morning", "dimanch maten" -> "Dimanch Maten"
+      "jeudi_soir", "thursday_night", "jedi swè" -> "Jedi Swè"
+      "jeunesse", "youth", "jennès" -> "Jèn yo"
+      "priere", "prayer", "lapriyè" -> "Reinyon Lapriyè"
+      "jeune", "fasting", "jen" -> "Jèn ak Lapriyè"
+      else -> category.replace("_", " ").replaceFirstChar { it.uppercaseChar() }
+    }
 }
 
 @IgnoreExtraProperties
@@ -272,7 +366,11 @@ data class Announcement(
   val commentsCount: Long = 0L,
   @ServerTimestamp val createdAt: Timestamp? = null,
   @ServerTimestamp val updatedAt: Timestamp? = null,
-)
+) {
+  val effectiveImageUrl: String?
+    get() = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+        ?: posterUrl?.trim()?.takeIf { it.isNotEmpty() }
+}
 
 @IgnoreExtraProperties
 data class AnnouncementReaction(
@@ -346,7 +444,25 @@ data class AttendanceRecord(
   val barcodeToken: String = "",
   val timestamp: Long = System.currentTimeMillis(),
   @ServerTimestamp val createdAt: Timestamp? = null,
-)
+) {
+  val effectiveStatus: String
+    get() = status.trim().ifEmpty { "on_time" }
+
+  val isCrossChurchVisitor: Boolean
+    get() = false
+
+  val effectiveMemberDbId: String
+    get() = memberDocId.trim().ifEmpty { memberId.trim().ifEmpty { id } }
+
+  val effectiveMemberCode: String
+    get() = memberCode.trim().ifEmpty { memberId }
+
+  val homeChurchName: String?
+    get() = null
+
+  val homeChurchId: String?
+    get() = null
+}
 
 @IgnoreExtraProperties
 data class ChurchNotification(
@@ -395,6 +511,7 @@ class OmniAuthException(override val message: String) : Exception(message)
 
 object OmniAuthEvaluator {
   const val SUPER_ADMIN_EMAIL = "charlesjj3186@gmail.com"
+  const val ERROR_SUPER_DEV_ISOLATION = "Kont sa a se yon kont devlopè sipè. Li pa ka kreye oswa modifye nan yon kontni regilye."
   const val ERROR_EMPTY_ID = "Tanpri antre ID Manm (Matrikil) ou oswa nimewo telefòn ou."
   const val ERROR_EMPTY_PIN =
     "Tanpri antre Kòd Sekirite (PIN) administrasyon legliz la ba ou a."
@@ -616,6 +733,21 @@ object OmniAuthEvaluator {
           (adminGoogleUid.isNotEmpty() && adminGoogleUid == cleanUid)))
   }
 
+  fun isChurchAdminAuthorized(church: Church, email: String?, uid: String?): Boolean =
+    isChurchEmailAdminAuthorized(church, email, uid)
+
+  fun hasMatchingChurchCloudOwner(church: Church, user: FirebaseUser?): Boolean {
+    val uid = user?.uid?.trim() ?: return false
+    val email = user.email?.trim()?.lowercase() ?: ""
+    val ownerUid = church.ownerId.trim()
+    val adminGoogleUid = (church.adminGoogleUid ?: "").trim()
+    val adminGoogleEmail = church.adminGoogleEmail.trim().lowercase()
+    return (ownerUid.isNotEmpty() && ownerUid == uid) ||
+      (adminGoogleUid.isNotEmpty() && adminGoogleUid == uid) ||
+      (adminGoogleEmail.isNotEmpty() && adminGoogleEmail == email) ||
+      CryptoSecurity.isSuperDeveloperAccount(email)
+  }
+
   fun resolveChurchForEmailPasswordLogin(
     churches: List<Church>,
     email: String?,
@@ -713,3 +845,98 @@ fun filterNonNullMap(vararg pairs: Pair<String, Any?>): Map<String, Any> {
   }
   return result
 }
+
+data class PublicVerificationResolution(
+  val church: Church,
+  val member: Member,
+)
+
+fun ChurchService.isServiceEnded(nowMillis: Long = System.currentTimeMillis()): Boolean {
+  if (status.equals("ended", ignoreCase = true) || status.equals("closed", ignoreCase = true)) {
+    return true
+  }
+  return startTimeEpochMillis > 0L && nowMillis > (startTimeEpochMillis + 4 * 3_600_000L)
+}
+
+fun buildCanonicalQrPayload(
+  churchId: String,
+  memberId: String,
+  verificationBaseUrl: String = "https://verify.omnichurch.download/",
+): String {
+  val base = verificationBaseUrl.trimEnd('/')
+  return "$base/?verify=1&church=${churchId.trim()}&member=${memberId.trim()}"
+}
+
+fun maskLegalDocumentNumber(raw: String?, shouldMask: Boolean): String {
+  val clean = raw?.trim().orEmpty()
+  if (clean.isEmpty()) return "—"
+  if (!shouldMask || clean.length <= 4) return clean
+  return "•".repeat(clean.length - 4) + clean.takeLast(4)
+}
+
+fun computeDeterministicVerificationSeal(
+  churchId: String,
+  memberDocId: String,
+  memberId: String,
+  isActive: Boolean,
+): String {
+  val payload = "${churchId.trim()}|${memberDocId.trim()}|${memberId.trim()}|$isActive"
+  val digest = MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8))
+  return "OC-" + digest.take(6).joinToString("") { "%02X".format(it) }
+}
+
+fun formatCreoleDateWithDay(isoDate: String): String =
+  isoDate.trim().ifBlank { "Dat Sèvis" }
+
+enum class MemberAttendanceStatus {
+  PRESENT, LATE, ABSENT, EXCUSED;
+
+  val labelHt: String
+    get() = when (this) {
+      PRESENT -> "Prezan"
+      LATE -> "An Retè"
+      ABSENT -> "Absan"
+      EXCUSED -> "Ekskize"
+    }
+}
+
+data class MemberAttendanceHistoryItem(
+  val id: String = "",
+  val dateLabel: String = "",
+  val timeLabel: String = "",
+  val serviceTitle: String = "",
+  val status: MemberAttendanceStatus = MemberAttendanceStatus.PRESENT,
+  val churchId: String = "",
+)
+
+data class CrossChurchVisitItem(
+  val id: String = "",
+  val hostChurchName: String = "",
+  val dateLabel: String = "",
+  val timeLabel: String = "",
+  val serviceTitle: String = "",
+  val churchId: String = "",
+)
+
+val AttendanceRecord.effectiveStatus: String
+  get() = status.trim().ifEmpty { "on_time" }
+
+val AttendanceRecord.isCrossChurchVisitor: Boolean
+  get() = false
+
+val AttendanceRecord.effectiveMemberDbId: String
+  get() = memberDocId.trim().ifEmpty { memberId.trim().ifEmpty { id } }
+
+val AttendanceRecord.effectiveMemberCode: String
+  get() = memberCode.trim().ifEmpty { memberId }
+
+val AttendanceRecord.homeChurchName: String?
+  get() = null
+
+val AttendanceRecord.homeChurchId: String?
+  get() = null
+
+fun ChurchService.isFinishedForAbsence(): Boolean {
+  return isPermanentlyLocked() || System.currentTimeMillis() > (startTimeEpochMillis + 3_600_000L * 3)
+}
+

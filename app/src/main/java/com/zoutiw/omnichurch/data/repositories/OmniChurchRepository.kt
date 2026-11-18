@@ -108,7 +108,7 @@ class OmniChurchRepository(
     authRepository.signInAdminWithEmailAndPassword(email, password, selectedChurchId)
 
   suspend fun sendAdminPasswordResetEmail(email: String): Result<Unit> =
-    authRepository.sendAdminPasswordResetEmail(email)
+    authRepository.sendPasswordResetEmail(email)
 
   fun observeUserProfile(userId: String): Flow<UserProfile?> =
     authRepository.observeUserProfile(userId)
@@ -233,6 +233,7 @@ class OmniChurchRepository(
     musicians: String? = null,
     ushers: String? = null,
     sendReminder24h: Boolean = false,
+    imageUrl: String? = null,
   ): Result<String> =
     serviceRepository.createService(
       churchId = churchId,
@@ -257,6 +258,7 @@ class OmniChurchRepository(
       musicians = musicians,
       ushers = ushers,
       sendReminder24h = sendReminder24h,
+      imageUrl = imageUrl,
     )
 
   suspend fun toggleServiceAttendanceStatus(

@@ -57,4 +57,8 @@ object FirestoreProvider {
     } catch (_: Exception) {}
     return firestore
   }
+
+  fun ensureFirebaseInitialized(context: Context) {
+    get(context)
+  }
 }

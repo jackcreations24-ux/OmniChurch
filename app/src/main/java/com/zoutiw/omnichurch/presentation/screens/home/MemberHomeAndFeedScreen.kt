@@ -102,7 +102,7 @@ import com.zoutiw.omnichurch.presentation.components.PremiumSectionHeader
 import com.zoutiw.omnichurch.presentation.components.PremiumServiceCard
 import com.zoutiw.omnichurch.presentation.components.Stacked3DReactionCluster
 import com.zoutiw.omnichurch.presentation.components.rememberFeedChromeNestedScrollConnection
-import com.zoutiw.omnichurch.presentation.navigation.UiState
+import com.zoutiw.omnichurch.presentation.viewmodels.UiState
 import com.zoutiw.omnichurch.ui.theme.BlueNeon
 import com.zoutiw.omnichurch.ui.theme.BrandGold
 import com.zoutiw.omnichurch.ui.theme.BrandOrange

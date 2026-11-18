@@ -89,13 +89,13 @@ import com.zoutiw.omnichurch.data.models.Member
 import com.zoutiw.omnichurch.data.models.buildCanonicalQrPayload
 import com.zoutiw.omnichurch.data.models.computeDeterministicVerificationSeal
 import com.zoutiw.omnichurch.data.models.maskLegalDocumentNumber
-import com.zoutiw.omnichurch.data.repositories.PublicVerificationResolution
+import com.zoutiw.omnichurch.data.models.PublicVerificationResolution
 import com.zoutiw.omnichurch.presentation.components.CanonicalBarcodeStrip
 import com.zoutiw.omnichurch.presentation.components.GlassLoadingIndicator
 import com.zoutiw.omnichurch.presentation.components.GlassPanel
 import com.zoutiw.omnichurch.presentation.components.OmniChurch3DFlameIcon
 import com.zoutiw.omnichurch.presentation.components.PremiumGlassCard
-import com.zoutiw.omnichurch.presentation.navigation.UiState
+import com.zoutiw.omnichurch.presentation.viewmodels.UiState
 import com.zoutiw.omnichurch.ui.theme.BlueNeon
 import com.zoutiw.omnichurch.ui.theme.BrandGold
 import com.zoutiw.omnichurch.ui.theme.BrandOrange

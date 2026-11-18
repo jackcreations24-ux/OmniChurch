@@ -98,6 +98,7 @@ class ServiceRepository(
     musicians: String? = null,
     ushers: String? = null,
     sendReminder24h: Boolean = false,
+    imageUrl: String? = null,
   ): Result<String> {
     val uid = resolveActorId(actorId)
     val docRef = db.collection("services").document()
@@ -125,6 +126,7 @@ class ServiceRepository(
         "musicians" to musicians?.trim()?.takeIf { it.isNotBlank() },
         "ushers" to ushers?.trim()?.takeIf { it.isNotBlank() },
         "sendReminder24h" to sendReminder24h,
+        "imageUrl" to imageUrl?.trim()?.takeIf { it.isNotBlank() },
         "type" to category.trim().ifBlank { "dimanche_matin" },
         "status" to "active",
         "startTimeEpochMillis" to System.currentTimeMillis(),
