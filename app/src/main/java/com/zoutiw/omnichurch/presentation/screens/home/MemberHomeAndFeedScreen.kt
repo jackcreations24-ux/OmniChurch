@@ -224,7 +224,6 @@ fun MemberHomeScreen(
       ?: userProfile?.churchName?.takeIf { it.isNotBlank() }
 
   var activeCommentTarget by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
-  var showCreateAnnouncementDialog by remember { mutableStateOf(false) }
   var showCreateServiceDialog by remember { mutableStateOf(false) }
   var editingService by remember { mutableStateOf<ChurchService?>(null) }
 
@@ -327,63 +326,35 @@ fun MemberHomeScreen(
           onActionClick = onOpenServices,
           modifier = Modifier.padding(horizontal = 14.dp),
           trailingExtraContent =
-            if (canCreateService || isAdmin) {
+            if (canCreateService) {
               {
                 Row(
                   verticalAlignment = Alignment.CenterVertically,
                   horizontalArrangement = Arrangement.spacedBy(6.dp),
                   modifier = Modifier.padding(end = 8.dp),
                 ) {
-                  if (isAdmin) {
-                    Box(
-                      modifier =
-                        Modifier.clip(RoundedCornerShape(50))
-                          .background(BrandGold.copy(alpha = 0.22f))
-                          .border(1.dp, BrandGold.copy(alpha = 0.65f), RoundedCornerShape(50))
-                          .clickable { showCreateAnnouncementDialog = true }
-                          .padding(horizontal = 9.dp, vertical = 4.dp)
-                          .testTag("home_add_announcement_chip"),
-                    ) {
-                      Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                          imageVector = Icons.Default.Add,
-                          contentDescription = stringResource(R.string.feed_add_announcement),
-                          tint = BrandGold,
-                          modifier = Modifier.size(14.dp),
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                          text = stringResource(R.string.feed_add_announcement),
-                          style = MaterialTheme.typography.labelSmall,
-                          color = PureWhite,
-                        )
-                      }
-                    }
-                  }
-                  if (canCreateService) {
-                    Box(
-                      modifier =
-                        Modifier.clip(RoundedCornerShape(50))
-                          .background(ElectricBlue.copy(alpha = 0.25f))
-                          .border(1.dp, BlueNeon.copy(alpha = 0.6f), RoundedCornerShape(50))
-                          .clickable { showCreateServiceDialog = true }
-                          .padding(horizontal = 9.dp, vertical = 4.dp)
-                          .testTag("home_add_service_chip"),
-                    ) {
-                      Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                          imageVector = Icons.Default.Add,
-                          contentDescription = stringResource(R.string.feed_add_service),
-                          tint = BlueNeon,
-                          modifier = Modifier.size(14.dp),
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                          text = stringResource(R.string.feed_add_service),
-                          style = MaterialTheme.typography.labelSmall,
-                          color = PureWhite,
-                        )
-                      }
+                  Box(
+                    modifier =
+                      Modifier.clip(RoundedCornerShape(50))
+                        .background(ElectricBlue.copy(alpha = 0.25f))
+                        .border(1.dp, BlueNeon.copy(alpha = 0.6f), RoundedCornerShape(50))
+                        .clickable { showCreateServiceDialog = true }
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                        .testTag("home_add_service_chip"),
+                  ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                      Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(R.string.feed_add_service),
+                        tint = BlueNeon,
+                        modifier = Modifier.size(14.dp),
+                      )
+                      Spacer(modifier = Modifier.width(2.dp))
+                      Text(
+                        text = stringResource(R.string.feed_add_service),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PureWhite,
+                      )
                     }
                   }
                 }
@@ -651,45 +622,6 @@ fun MemberHomeScreen(
         }
       }
     }
-  }
-
-  // Admin Publish Announcement Bottom Sheet (Modern & Minimalist)
-  if (showCreateAnnouncementDialog) {
-    val servicesList = (servicesState as? UiState.Success)?.data ?: emptyList()
-    CreateAnnouncementBottomSheet(
-      onDismissRequest = { showCreateAnnouncementDialog = false },
-      availableServices = servicesList,
-      onSubmit = {
-        aTitle,
-        aContent,
-        aDept,
-        aCategory,
-        aDate,
-        aAudience,
-        aPinned,
-        aShowToast,
-        aAlertLevel,
-        aScheduled,
-        aScheduledDate,
-        aPoster,
-        aServiceId ->
-        onCreateAnnouncement(
-          aTitle,
-          aContent,
-          aDept,
-          aCategory,
-          aDate,
-          aAudience,
-          aPinned,
-          aShowToast,
-          aAlertLevel,
-          aScheduled,
-          aScheduledDate,
-          aPoster,
-          aServiceId,
-        )
-      },
-    )
   }
 
   // Admin / Dyak Create Service Bottom Sheet (Modern & Minimalist)

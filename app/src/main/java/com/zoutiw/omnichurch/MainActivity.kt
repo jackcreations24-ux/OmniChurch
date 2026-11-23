@@ -1117,6 +1117,21 @@ private fun AuthenticatedOmniChurchWorkspace(
                 OmniRoutes.PROFILE_SETTINGS -> OmniNavTab.PROFILE
                 else -> OmniNavTab.MEMBER_CARD_OR_SCANNER
               }
+            val resolvedBottomNavAvatarUrl =
+              member?.effectivePhotoUrl?.trim()?.takeIf { it.isNotEmpty() }
+                ?: userProfile?.photoUrl?.trim()?.takeIf { it.isNotEmpty() }
+                ?: if (isAdminSession) {
+                  activeChurch?.adminGooglePhoto?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: adminFirebaseUser?.photoUrl?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: activeChurch?.logoUrl?.trim()?.takeIf { it.isNotEmpty() }
+                } else {
+                  adminFirebaseUser?.photoUrl?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                }
+            val resolvedBottomNavDisplayName =
+              member?.effectiveFullName?.trim()?.takeIf { it.isNotBlank() }
+                ?: userProfile?.displayName?.trim()?.takeIf { it.isNotBlank() }
+                ?: activeChurch?.adminGoogleName?.trim()?.takeIf { it.isNotBlank() }
+                ?: resolvedAuthorName
 
             GlassBottomNavigation(
               selectedTab = selectedTab,
@@ -1146,6 +1161,8 @@ private fun AuthenticatedOmniChurchWorkspace(
                   navController.navigate(OmniRoutes.MEMBER_QR_GALLERY)
                 }
               },
+              userAvatarUrl = resolvedBottomNavAvatarUrl,
+              userDisplayName = resolvedBottomNavDisplayName,
               modifier = Modifier.align(Alignment.BottomCenter),
             )
           }

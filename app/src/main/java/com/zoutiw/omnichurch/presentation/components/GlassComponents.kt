@@ -3942,6 +3942,8 @@ fun GlassBottomNavigation(
   onTabSelected: (OmniNavTab) -> Unit,
   onCenterQrOrbClick: () -> Unit,
   modifier: Modifier = Modifier,
+  userAvatarUrl: String? = null,
+  userDisplayName: String = "",
 ) {
   Box(
     modifier =
@@ -4019,6 +4021,9 @@ fun GlassBottomNavigation(
         isSelected = selectedTab == OmniNavTab.PROFILE,
         onClick = { onTabSelected(OmniNavTab.PROFILE) },
         testTag = "nav_tab_profile",
+        useUserAvatar = true,
+        userAvatarUrl = userAvatarUrl,
+        userDisplayName = userDisplayName,
       )
     }
 
@@ -4066,6 +4071,9 @@ private fun BottomNavTabItem(
   badgeCount: Int = 0,
   onClick: () -> Unit,
   testTag: String,
+  useUserAvatar: Boolean = false,
+  userAvatarUrl: String? = null,
+  userDisplayName: String = "",
 ) {
   val bgMod =
     if (isSelected) {
@@ -4091,12 +4099,21 @@ private fun BottomNavTabItem(
   ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
       Box {
-        Icon(
-          imageVector = icon,
-          contentDescription = label,
-          tint = if (isSelected) PureWhite else GlassWhite.copy(alpha = 0.78f),
-          modifier = Modifier.size(22.dp),
-        )
+        if (useUserAvatar) {
+          BottomNavUserAvatar(
+            avatarUrl = userAvatarUrl,
+            displayName = userDisplayName,
+            contentDescription = label,
+            isSelected = isSelected,
+          )
+        } else {
+          Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (isSelected) PureWhite else GlassWhite.copy(alpha = 0.78f),
+            modifier = Modifier.size(22.dp),
+          )
+        }
         if (badgeCount > 0) {
           GlassNotificationBadge(
             count = badgeCount,
@@ -4112,6 +4129,90 @@ private fun BottomNavTabItem(
         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
         maxLines = 1,
       )
+    }
+  }
+}
+
+@Composable
+private fun BottomNavUserAvatar(
+  avatarUrl: String?,
+  displayName: String,
+  contentDescription: String,
+  isSelected: Boolean,
+) {
+  val cleanUrl = remember(avatarUrl) { avatarUrl?.trim()?.takeIf { it.isNotEmpty() } }
+  val decodedBitmap =
+    remember(cleanUrl) {
+      cleanUrl?.let { ImageCompressor.decodeBase64DataUrlToBitmap(it) }
+    }
+  var remoteLoadFailed by remember(cleanUrl) { mutableStateOf(false) }
+  val initials =
+    remember(displayName) {
+      displayName
+        .trim()
+        .split(Regex("\\s+"))
+        .filter { it.isNotBlank() }
+        .take(2)
+        .mapNotNull { it.firstOrNull()?.uppercaseChar() }
+        .joinToString("")
+    }
+
+  Box(
+    modifier =
+      Modifier.size(24.dp)
+        .clip(CircleShape)
+        .background(
+          Brush.linearGradient(
+            listOf(
+              BlueNeon,
+              ElectricBlue,
+              RoyalBlue,
+            )
+          )
+        )
+        .border(
+          width = if (isSelected) 1.6.dp else 1.1.dp,
+          color = if (isSelected) PureWhite else GlassWhite.copy(alpha = 0.72f),
+          shape = CircleShape,
+        )
+        .testTag("nav_tab_profile_avatar"),
+    contentAlignment = Alignment.Center,
+  ) {
+    when {
+      decodedBitmap != null -> {
+        Image(
+          bitmap = decodedBitmap.asImageBitmap(),
+          contentDescription = contentDescription,
+          contentScale = ContentScale.Crop,
+          modifier = Modifier.fillMaxSize(),
+        )
+      }
+      cleanUrl != null && !remoteLoadFailed -> {
+        AsyncImage(
+          model = cleanUrl,
+          contentDescription = contentDescription,
+          contentScale = ContentScale.Crop,
+          onError = { remoteLoadFailed = true },
+          modifier = Modifier.fillMaxSize(),
+        )
+      }
+      initials.isNotBlank() -> {
+        Text(
+          text = initials,
+          style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+          color = PureWhite,
+          fontWeight = FontWeight.ExtraBold,
+          maxLines = 1,
+        )
+      }
+      else -> {
+        Icon(
+          imageVector = Icons.Default.Person,
+          contentDescription = contentDescription,
+          tint = PureWhite,
+          modifier = Modifier.size(14.dp),
+        )
+      }
     }
   }
 }
