@@ -187,7 +187,7 @@ fun ServicesScreen(
   modifier: Modifier = Modifier,
   onDeleteService: (String) -> Unit = {},
   isAdminSession: Boolean = false,
-  canCreateService: Boolean = isAdminSession,
+  canCreateService: Boolean = isAdminSession || userProfile?.isAdminOrSuperAdmin == true,
   canEditService: Boolean = canCreateService,
   onUpdateService: (
     existingService: ChurchService,
@@ -212,11 +212,14 @@ fun ServicesScreen(
   ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
   temporaryAuthorizedServiceIds: Set<String> = emptySet(),
   reactionSummaries: Map<String, TargetReactionSummary> = emptyMap(),
+  commentCounts: Map<String, Int> = emptyMap(),
   onReactToService: (serviceId: String, reactionType: String) -> Unit = { _, _ -> },
   observeComments: (targetId: String) -> Flow<List<AnnouncementComment>> = { emptyFlow() },
   onPostComment: (serviceId: String, content: String) -> Unit = { _, _ -> },
   onReactToComment: (commentId: String, reactionType: String) -> Unit = { _, _ -> },
   churchMembers: List<Member> = emptyList(),
+  activeChurchLogoUrl: String? = null,
+  currentLanguageCode: String = "ht",
   isChromeVisible: Boolean = true,
   onChromeVisibilityChange: (Boolean) -> Unit = {},
   adMobState: EffectiveMobileAdMobState = EffectiveMobileAdMobState(),
@@ -314,6 +317,7 @@ fun ServicesScreen(
               PremiumServiceCard(
                 service = service,
                 reactionSummary = reactionSummaries[service.id],
+                commentsCountOverride = commentCounts[service.id],
                 onReactClick = { onReactToService(service.id, "pray") },
                 onSelectReaction = { reactionType ->
                   onReactToService(service.id, reactionType.key)
@@ -323,6 +327,8 @@ fun ServicesScreen(
                 canEdit = canEditService,
                 isScanner = canScanThisService,
                 churchMembers = churchMembers,
+                churchLogoUrl = activeChurchLogoUrl,
+                languageCode = currentLanguageCode,
                 onToggleAttendanceWindow =
                   if (isAdmin) {
                     { isOpen -> onToggleAttendanceWindow(service, isOpen) }
@@ -1003,8 +1009,16 @@ fun NotificationsScreen(
       title: String,
       content: String,
       department: String,
+      category: String,
+      date: String,
+      targetAudience: String,
       isPinned: Boolean,
+      showToastOnLogin: Boolean,
+      toastAlertLevel: String,
+      isScheduledNotification: Boolean,
+      scheduledNotificationDate: String?,
       posterUrl: String?,
+      serviceId: String?,
     ) -> Unit)? =
     null,
   onUpdateAnnouncement:
@@ -1028,7 +1042,11 @@ fun NotificationsScreen(
   announcementsState: UiState<List<Announcement>> = UiState.Success(emptyList()),
   unreadAnnouncementIds: Set<String> = emptySet(),
   onMarkAnnouncementRead: (announcementId: String) -> Unit = {},
+  onMarkAllAnnouncementsRead: () -> Unit = {},
+  onRetryLoadAnnouncements: () -> Unit = {},
+  currentLanguageCode: String = "ht",
   reactionSummaries: Map<String, TargetReactionSummary> = emptyMap(),
+  commentCounts: Map<String, Int> = emptyMap(),
   onReactToAnnouncement: (announcementId: String, reactionType: String) -> Unit = { _, _ -> },
   observeComments: ((targetId: String) -> Flow<List<AnnouncementComment>>)? = null,
   onPostComment: (targetId: String, content: String) -> Unit = { _, _ -> },
@@ -1040,9 +1058,16 @@ fun NotificationsScreen(
   modifier: Modifier = Modifier,
 ) {
   BackHandler(onBack = onBackClick)
+  val copy = remember(currentLanguageCode) {
+    com.zoutiw.omnichurch.presentation.components.AnnouncementStrings.forLanguage(currentLanguageCode)
+  }
   var showCreateAnnouncementDialog by remember { mutableStateOf(false) }
   var editingAnnouncement by remember { mutableStateOf<Announcement?>(null) }
+  var readingAnnouncement by remember { mutableStateOf<Announcement?>(null) }
   var activeCommentTargetId by remember { mutableStateOf<String?>(null) }
+  var selectedFilter by remember {
+    mutableStateOf(com.zoutiw.omnichurch.presentation.components.AnnouncementFilterMode.ALL)
+  }
 
   val listState = rememberLazyListState()
   val feedScrollConnection = rememberFeedChromeNestedScrollConnection(
@@ -1066,7 +1091,27 @@ fun NotificationsScreen(
   )
 
   val isLoading = announcementsState is UiState.Loading
-  val announcementsList = (announcementsState as? UiState.Success)?.data ?: emptyList()
+  val loadErrorMessage = (announcementsState as? UiState.Error)?.message
+  val rawAnnouncementsList = (announcementsState as? UiState.Success)?.data ?: emptyList()
+  val visibleAnnouncements = remember(rawAnnouncementsList, isAdmin) {
+    if (isAdmin) rawAnnouncementsList else rawAnnouncementsList.filter { it.isPublished }
+  }
+  val unreadCount = remember(visibleAnnouncements, unreadAnnouncementIds) {
+    visibleAnnouncements.count { it.id in unreadAnnouncementIds }
+  }
+  val pinnedCount = remember(visibleAnnouncements) {
+    visibleAnnouncements.count { it.isPinned }
+  }
+  val filteredAnnouncements = remember(visibleAnnouncements, selectedFilter, unreadAnnouncementIds) {
+    when (selectedFilter) {
+      com.zoutiw.omnichurch.presentation.components.AnnouncementFilterMode.ALL ->
+        visibleAnnouncements
+      com.zoutiw.omnichurch.presentation.components.AnnouncementFilterMode.UNREAD ->
+        visibleAnnouncements.filter { it.id in unreadAnnouncementIds }
+      com.zoutiw.omnichurch.presentation.components.AnnouncementFilterMode.PINNED ->
+        visibleAnnouncements.filter { it.isPinned }
+    }
+  }
 
   Box(modifier = modifier.fillMaxSize()) {
     LazyColumn(
@@ -1084,9 +1129,33 @@ fun NotificationsScreen(
         }
       }
 
+      if (!isLoading && loadErrorMessage == null && visibleAnnouncements.isNotEmpty()) {
+        item(key = "announcements_filter_bar") {
+          com.zoutiw.omnichurch.presentation.components.AnnouncementFilterBar(
+            selectedFilter = selectedFilter,
+            totalCount = visibleAnnouncements.size,
+            unreadCount = unreadCount,
+            pinnedCount = pinnedCount,
+            languageCode = currentLanguageCode,
+            onSelectFilter = { selectedFilter = it },
+            onMarkAllRead = onMarkAllAnnouncementsRead,
+          )
+        }
+      }
+
       if (isLoading) {
         item { GlassLoadingIndicator() }
-      } else if (announcementsList.isEmpty()) {
+      } else if (loadErrorMessage != null) {
+        item {
+          PremiumEmptyState(
+            title = copy.loadErrorTitle,
+            subtitle = loadErrorMessage,
+            icon = Icons.Default.Campaign,
+            actionLabel = copy.retryLabel,
+            onActionClick = onRetryLoadAnnouncements,
+          )
+        }
+      } else if (visibleAnnouncements.isEmpty()) {
         item {
           PremiumEmptyState(
             title = stringResource(R.string.notifications_empty_title),
@@ -1102,13 +1171,25 @@ fun NotificationsScreen(
               else null,
           )
         }
+      } else if (filteredAnnouncements.isEmpty()) {
+        item {
+          val isUnreadTab =
+            selectedFilter == com.zoutiw.omnichurch.presentation.components.AnnouncementFilterMode.UNREAD
+          PremiumEmptyState(
+            title = if (isUnreadTab) copy.allReadEmptyTitle else copy.noPinnedEmptyTitle,
+            subtitle = if (isUnreadTab) copy.allReadEmptySubtitle else copy.noPinnedEmptySubtitle,
+            icon = Icons.Default.Campaign,
+          )
+        }
       } else {
-        // Unified self-sufficient 3D Church Announcements with unread sign, timestamp, and click-to-read
-        items(announcementsList, key = { "ann_${it.id}" }) { announcement ->
-          val isUnread = !isAdmin && (announcement.id in unreadAnnouncementIds)
+        // Unified self-sufficient 3D Church Announcements with unread sign, timestamp, and full reading sheet
+        items(filteredAnnouncements, key = { "ann_${it.id}" }) { announcement ->
+          val isUnread = announcement.id in unreadAnnouncementIds
           PremiumAnnouncementCard(
             announcement = announcement,
             reactionSummary = reactionSummaries[announcement.id],
+            commentsCountOverride = commentCounts[announcement.id],
+            languageCode = currentLanguageCode,
             onReactClick = {
               onMarkAnnouncementRead(announcement.id)
               onReactToAnnouncement(announcement.id, "pray")
@@ -1124,7 +1205,11 @@ fun NotificationsScreen(
             isAdmin = isAdmin,
             canEdit = canEditAnnouncement && onUpdateAnnouncement != null,
             isUnread = isUnread,
-            onCardClick = { onMarkAnnouncementRead(announcement.id) },
+            onMarkRead = { onMarkAnnouncementRead(announcement.id) },
+            onCardClick = {
+              onMarkAnnouncementRead(announcement.id)
+              readingAnnouncement = announcement
+            },
             onEditClick =
               if (canEditAnnouncement && onUpdateAnnouncement != null) {
                 { editingAnnouncement = announcement }
@@ -1160,7 +1245,7 @@ fun NotificationsScreen(
           .statusBarsPadding(),
       ) {
         GlassTopBar(
-          title = stringResource(R.string.notifications_screen_title),
+          title = copy.screenTitle,
           onBackClick = onBackClick,
           trailingContent =
             if (canPublishAnnouncement && onCreateAnnouncement != null) {
@@ -1195,6 +1280,33 @@ fun NotificationsScreen(
         )
       }
     }
+  }
+
+  // Full Announcement Reading Sheet
+  val currentReadingAnnouncement = readingAnnouncement
+  if (currentReadingAnnouncement != null) {
+    // Keep reader synchronized with live Firestore updates (e.g., edits, reactions, comments)
+    val liveAnnouncement =
+      visibleAnnouncements.firstOrNull { it.id == currentReadingAnnouncement.id }
+        ?: currentReadingAnnouncement
+    com.zoutiw.omnichurch.presentation.components.AnnouncementReaderSheet(
+      announcement = liveAnnouncement,
+      languageCode = currentLanguageCode,
+      reactionSummary = reactionSummaries[liveAnnouncement.id],
+      commentsCountOverride = commentCounts[liveAnnouncement.id],
+      onDismiss = { readingAnnouncement = null },
+      onMarkRead = onMarkAnnouncementRead,
+      onSelectReaction = { reactionType ->
+        onMarkAnnouncementRead(liveAnnouncement.id)
+        onReactToAnnouncement(liveAnnouncement.id, reactionType.key)
+      },
+      onOpenComments = {
+        onMarkAnnouncementRead(liveAnnouncement.id)
+        val targetId = liveAnnouncement.id
+        readingAnnouncement = null
+        activeCommentTargetId = targetId
+      },
+    )
   }
 
   // Comments Modal Bottom Sheet for Announcement cards
@@ -1334,8 +1446,35 @@ fun NotificationsScreen(
     CreateAnnouncementBottomSheet(
       onDismissRequest = { showCreateAnnouncementDialog = false },
       availableServices = availableServices,
-      onSubmit = { aTitle, aContent, aDept, _, _, _, aPinned, _, _, _, _, aPosterUrl, _ ->
-        onCreateAnnouncement(aTitle, aContent, aDept, aPinned, aPosterUrl)
+      onSubmit = {
+        aTitle,
+        aContent,
+        aDept,
+        aCategory,
+        aDate,
+        aAudience,
+        aPinned,
+        aShowToast,
+        aAlertLevel,
+        aScheduled,
+        aScheduledDate,
+        aPosterUrl,
+        aServiceId ->
+        onCreateAnnouncement(
+          aTitle,
+          aContent,
+          aDept,
+          aCategory,
+          aDate,
+          aAudience,
+          aPinned,
+          aShowToast,
+          aAlertLevel,
+          aScheduled,
+          aScheduledDate,
+          aPosterUrl,
+          aServiceId,
+        )
       },
     )
   }
@@ -1417,6 +1556,7 @@ fun ProfileAndSettingsScreen(
     ) -> Unit)? =
     null,
   activeChurch: com.zoutiw.omnichurch.data.models.Church? = null,
+  isAdminSession: Boolean = false,
   isAdminSecurityBusy: Boolean = false,
   onSaveChurchSecuritySettings:
     ((quickPinEnabled: Boolean, newPinOrNull: String?, autoLockMinutes: Int) -> Unit)? =
@@ -1489,7 +1629,7 @@ fun ProfileAndSettingsScreen(
       }
     }
 
-  val isAdmin = userProfile?.isAdminOrSuperAdmin == true
+  val isAdmin = isAdminSession || userProfile?.isAdminOrSuperAdmin == true
   val churchNameDisplay =
     member?.churchName?.takeIf { it.isNotBlank() }
       ?: userProfile?.churchName?.takeIf { it.isNotBlank() }
@@ -1789,6 +1929,7 @@ fun ProfileAndSettingsScreen(
         com.zoutiw.omnichurch.presentation.screens.auth.ChurchAdminSecuritySettingsCard(
           church = activeChurch,
           isSaving = isAdminSecurityBusy,
+          currentLanguageCode = currentLanguageCode,
           onSaveSettings = onSaveChurchSecuritySettings,
           onLockAdminNow = onLockAdminNow,
         )

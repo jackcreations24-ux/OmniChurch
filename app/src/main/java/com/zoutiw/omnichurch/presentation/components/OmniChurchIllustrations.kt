@@ -57,9 +57,8 @@ import com.zoutiw.omnichurch.ui.theme.PureWhite
 import com.zoutiw.omnichurch.ui.theme.RoyalBlue
 
 /**
- * ASSET 01 + ASSET 02 — Official OmniChurch Mobile Brand Header.
- * Uses the official transparent PNG assets (`omnichurch_flame` and `omnichurch_wordmark`)
- * while preserving original aspect ratios.
+ * Official OmniChurch PRO Brand Header.
+ * Uses the pure transparent [OmniChurchLogo] assets directly without artificial boxes or halos.
  */
 @Composable
 fun OmniChurchBrandHeader(
@@ -67,85 +66,39 @@ fun OmniChurchBrandHeader(
   isProStyle: Boolean = false,
   modifier: Modifier = Modifier,
 ) {
-  if (!isProStyle) {
-    // Official Home / Login / Splash Brand Header with Flame + 3D OmniChurch Mobile Wordmark
-    Row(
-      modifier = modifier,
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.Center,
-    ) {
-      OmniChurch3DFlameIcon(size = 42.dp)
-      Spacer(modifier = Modifier.width(6.dp))
-      Image(
-        painter = painterResource(id = R.drawable.omnichurch_wordmark),
-        contentDescription = "OmniChurch $badgeText",
-        contentScale = ContentScale.Fit,
-        modifier = Modifier.height(44.dp),
-      )
-    }
-  } else {
-    // Pro Card Header style (Flame emblem + "OmniChurch" / "Pro" for Member ID Card)
-    Row(
-      modifier = modifier,
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.Center,
-    ) {
-      OmniChurch3DFlameIcon(size = 38.dp)
-      Spacer(modifier = Modifier.width(8.dp))
-      Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-          text = "OmniChurch",
-          style = MaterialTheme.typography.titleLarge.copy(fontSize = 21.sp),
-          color = PureWhite,
-          fontWeight = FontWeight.ExtraBold,
-        )
-        Text(
-          text = badgeText,
-          style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
-          color = BrandGold,
-          fontWeight = FontWeight.Bold,
-        )
-      }
-    }
+  Row(
+    modifier = modifier,
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.Center,
+  ) {
+    OmniChurchLogo(
+      variant = LogoVariant.Icon,
+      modifier = Modifier.size(if (isProStyle) 36.dp else 34.dp),
+      contentDescription = "OmniChurch PRO Logo",
+    )
+    Spacer(modifier = Modifier.width(8.dp))
+    Text(
+      text = "OmniChurch",
+      style = MaterialTheme.typography.titleMedium.copy(fontSize = if (isProStyle) 20.sp else 18.sp),
+      color = PureWhite,
+      fontWeight = FontWeight.ExtraBold,
+    )
+    Spacer(modifier = Modifier.width(6.dp))
+    OmniChurchProBadge(label = if (isProStyle && badgeText.isNotBlank()) badgeText.uppercase() else "PRO")
   }
 }
 
 /**
- * ASSET 01 — Official Standalone OmniChurch Flame Symbol (`R.drawable.omnichurch_flame`)
- * with subtle 3D ambient lighting glow.
+ * Official Standalone OmniChurch Flame Symbol (`R.drawable.omnichurch_icon`).
+ * Rendered directly on transparent background with zero artificial halo, border, or shadow.
  */
 @Composable
 fun OmniChurch3DFlameIcon(size: Dp = 36.dp, modifier: Modifier = Modifier) {
-  Box(
+  OmniChurchLogo(
+    variant = LogoVariant.Icon,
     modifier = modifier.size(size),
-    contentAlignment = Alignment.Center,
-  ) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-      val w = this.size.width
-      val h = this.size.height
-      drawCircle(
-        brush =
-          Brush.radialGradient(
-            colors =
-              listOf(
-                BrandOrange.copy(alpha = 0.28f),
-                BlueNeon.copy(alpha = 0.18f),
-                Color.Transparent,
-              ),
-            center = Offset(w * 0.5f, h * 0.55f),
-            radius = w * 0.58f,
-          ),
-        radius = w * 0.58f,
-        center = Offset(w * 0.5f, h * 0.55f),
-      )
-    }
-    Image(
-      painter = painterResource(id = R.drawable.omnichurch_flame),
-      contentDescription = "OmniChurch Flame Emblem",
-      contentScale = ContentScale.Fit,
-      modifier = Modifier.fillMaxSize(),
-    )
-  }
+    contentDescription = "OmniChurch PRO Official Icon",
+  )
 }
 
 /**

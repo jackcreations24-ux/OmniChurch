@@ -513,11 +513,11 @@ fun MemberQRGalleryScreen(
           }
           if (onOpenVerificationCertificate != null) {
             QrGalleryCompactActionPill(
-              label = "Sètifika",
+              label = stringResource(R.string.qr_gallery_verify_card),
               icon = Icons.Default.VerifiedUser,
               accentColor = SuccessGreen,
               onClick = { onOpenVerificationCertificate(member) },
-              modifier = Modifier.testTag("qr_gallery_open_certificate_btn"),
+              modifier = Modifier.testTag("qr_gallery_verify_card_btn"),
             )
           }
         }

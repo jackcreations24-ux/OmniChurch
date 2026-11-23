@@ -48,7 +48,9 @@ class AttendanceRepository(
     scannerUserProfile: UserProfile,
     checkInMethod: String,
   ): ScannerValidationOutcome {
-    val staffUid = resolveActorId(scannerUserProfile.userId.ifBlank { scannerUserProfile.id })
+    val staffUid =
+      auth.currentUser?.uid?.trim()?.takeIf { it.isNotEmpty() }
+        ?: resolveActorId(scannerUserProfile.userId.ifBlank { scannerUserProfile.id })
 
     val isAuthorizedStaff =
       scannerUserProfile.isAuthorizedScanner ||
@@ -59,7 +61,8 @@ class AttendanceRepository(
 
     val staffChurchId = (scannerUserProfile.churchId ?: "").trim().ifBlank { selectedService.churchId }
     if (
-      staffChurchId.isEmpty() ||
+      !FirestorePayloadSanitizer.isValidChurchId(staffChurchId) ||
+        !FirestorePayloadSanitizer.isValidDocumentId(selectedService.id) ||
         !selectedService.churchId.trim().equals(staffChurchId, ignoreCase = true)
     ) {
       return ScannerValidationOutcome.ValidationError(AttendanceErrorType.WRONG_CHURCH)
@@ -79,7 +82,7 @@ class AttendanceRepository(
         )
       }
 
-    if (liveService == null || !liveService.isOpenForAttendance) {
+    if (liveService == null || !liveService.isOpenForAttendance || liveService.isPermanentlyEnded) {
       return ScannerValidationOutcome.ValidationError(AttendanceErrorType.SERVICE_CLOSED)
     }
     if (!liveService.churchId.trim().equals(staffChurchId, ignoreCase = true)) {
@@ -139,11 +142,21 @@ class AttendanceRepository(
       return ScannerValidationOutcome.ValidationError(AttendanceErrorType.INVALID_QR)
     }
 
+    if (matchedMember.effectiveStatus.lowercase(Locale.US) in setOf("suspended", "inactive")) {
+      return ScannerValidationOutcome.ValidationError(
+        AttendanceErrorType.UNAUTHORIZED,
+        "Manm sa a pa aktif nan rejis legliz la (${matchedMember.effectiveStatus}).",
+      )
+    }
+
     if (!matchedMember.churchId.trim().equals(staffChurchId, ignoreCase = true)) {
       return ScannerValidationOutcome.ValidationError(AttendanceErrorType.WRONG_CHURCH)
     }
 
     val attendanceDocId = "${liveService.id}_${matchedMember.id}"
+    if (!FirestorePayloadSanitizer.isValidDocumentId(attendanceDocId)) {
+      return ScannerValidationOutcome.ValidationError(AttendanceErrorType.INVALID_QR)
+    }
     val attendanceRef = db.collection("attendances").document(attendanceDocId)
 
     try {
@@ -184,16 +197,19 @@ class AttendanceRepository(
 
     val memberMatrikil = matchedMember.effectiveMatrikil
     val memberUserId = matchedMember.userId.trim().ifEmpty { matchedMember.id }
-    val memberToken = matchedMember.effectiveBarcodeToken
+    val memberToken = matchedMember.barcodeToken.trim().takeIf { it.isNotEmpty() } ?: matchedMember.effectiveBarcodeToken
 
-    val normalizedCheckInMethod = when (checkInMethod.trim().lowercase()) {
+    val normalizedCheckInMethod = when (checkInMethod.trim().lowercase(Locale.US)) {
       "manual" -> "manual"
       "nfc", "nfc_scan" -> "nfc_scan"
+      "qr_scanner" -> "qr_scanner"
+      "barcode" -> "barcode"
+      "kiosk" -> "kiosk"
       else -> "qr_scan"
     }
 
-    val payload =
-      filterNonNullMap(
+    val rawPayload =
+      hashMapOf<String, Any?>(
         "churchId" to staffChurchId,
         "serviceId" to liveService.id,
         "serviceName" to liveService.title,
@@ -206,29 +222,34 @@ class AttendanceRepository(
         "recordedByUid" to staffUid,
         "status" to computedStatus,
         "checkInMethod" to normalizedCheckInMethod,
-        "barcodeToken" to memberToken,
+        "barcodeToken" to memberToken.takeIf { it.isNotBlank() },
+        "attendanceRole" to "member",
+        "isVisitor" to false,
         "timestamp" to nowMillis,
         "createdAt" to FieldValue.serverTimestamp(),
       )
+    val payload = FirestorePayloadSanitizer.sanitizeRegularAttendanceCreate(rawPayload)
 
     return try {
       attendanceRef.set(payload).await()
 
       val statusLabel = if (computedStatus == "on_time") "A Lè" else "An Reta"
       val notifRef = db.collection("notifications").document()
-      notifRef
-        .set(
-          filterNonNullMap(
-            "userId" to memberUserId,
-            "churchId" to staffChurchId,
-            "title" to "Prezans Anrejistre • ${liveService.title}",
-            "message" to "Prezans ou pou ${liveService.title} anrejistre kòm: $statusLabel.",
-            "type" to "attendance",
-            "isRead" to false,
-            "createdAt" to FieldValue.serverTimestamp(),
+      runCatching {
+        notifRef
+          .set(
+            filterNonNullMap(
+              "userId" to memberUserId,
+              "churchId" to staffChurchId,
+              "title" to "Prezans Anrejistre • ${liveService.title}",
+              "message" to "Prezans ou pou ${liveService.title} anrejistre kòm: $statusLabel.",
+              "type" to "attendance",
+              "isRead" to false,
+              "createdAt" to FieldValue.serverTimestamp(),
+            )
           )
-        )
-        .await()
+          .await()
+      }
 
       val formattedTime = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(nowMillis))
       val record =
@@ -269,21 +290,27 @@ class AttendanceRepository(
     churchId: String,
     serviceId: String,
   ): Flow<List<AttendanceRecord>> = flow {
+    val cleanChurchId = churchId.trim()
+    val cleanServiceId = serviceId.trim()
+    if (cleanChurchId.isEmpty() || cleanServiceId.isEmpty()) {
+      emit(emptyList())
+      return@flow
+    }
     val path = "attendances"
     emitAll(
       db
         .collection("attendances")
-        .whereEqualTo("churchId", churchId)
-        .whereEqualTo("serviceId", serviceId)
+        .whereEqualTo("churchId", cleanChurchId)
         .snapshots()
         .map { snapshot ->
           snapshot.documents
             .mapNotNull { it.toAttendanceRecord() }
-            .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
+            .filter { it.serviceId.trim() == cleanServiceId }
+            .sortedByDescending { it.createdAt ?: Timestamp(Date(it.timestamp)) }
         }
         .catch { error ->
           handleFirestoreError(error, OperationType.LIST, path)
-          throw error
+          emit(emptyList())
         }
     )
   }

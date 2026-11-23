@@ -29,8 +29,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -1458,11 +1460,14 @@ fun PremiumServiceCard(
   onCommentClick: () -> Unit,
   modifier: Modifier = Modifier,
   reactionSummary: TargetReactionSummary? = null,
+  commentsCountOverride: Int? = null,
   onSelectReaction: ((OmniReactionType) -> Unit)? = null,
   isAdmin: Boolean = false,
   canEdit: Boolean = isAdmin,
   isScanner: Boolean = false,
   churchMembers: List<Member> = emptyList(),
+  churchLogoUrl: String? = null,
+  languageCode: String = "ht",
   onToggleAttendanceWindow: ((Boolean) -> Unit)? = null,
   onOpenScanner: (() -> Unit)? = null,
   onViewAttendances: (() -> Unit)? = null,
@@ -1501,10 +1506,21 @@ fun PremiumServiceCard(
     }
   }
 
-  val serviceDateSubtitle = service.effectiveScheduleLabel
-  val publishedTimestampText = remember(service.createdAt, service.dateFormatted, service.date) {
-    formatServiceTimestamp(service)
-  }
+  val serviceDateSubtitle =
+    remember(
+      service.date,
+      service.dateFormatted,
+      service.startTime,
+      service.endTime,
+      service.startTimeEpochMillis,
+      languageCode,
+    ) {
+      service.formattedScheduleWithDay(languageCode)
+    }
+  val publishedTimestampText =
+    remember(service.createdAt, service.dateFormatted, service.date, languageCode) {
+      formatServiceTimestamp(service, languageCode)
+    }
   val mediaUrl = service.effectiveImageUrl
 
   val shareTitle =
@@ -1549,203 +1565,234 @@ fun PremiumServiceCard(
     contentPadding = PaddingValues(0.dp),
     modifier = modifier.fillMaxWidth().testTag("feed_service_card_${service.id}"),
   ) {
-    // 1. Card Header (Church Identity, Category + Schedule + Timestamp, Live Badge + Timer)
+    // 1. Card Header — Church Profile Avatar + Author Identity first + Published Date cleanly aligned underneath
+    val primaryAuthorTitle =
+      service.churchName.trim().ifBlank {
+        service.authorName.trim().ifBlank { service.categoryLabelHt }
+      }
+    val secondaryAuthorLabel =
+      service.authorName.trim().takeIf {
+        it.isNotBlank() && !it.equals(primaryAuthorTitle, ignoreCase = true)
+      }
+    val langNorm = languageCode.trim().lowercase()
+    val statusEndedLabel =
+      when (langNorm) {
+        "fr" -> "TERMINÉ"
+        "en" -> "ENDED"
+        "es" -> "FINALIZADO"
+        else -> "FINI"
+      }
+    val statusAttendanceOpenLabel =
+      when (langNorm) {
+        "fr" -> "PRÉSENCE OUVERTE"
+        "en" -> "ATTENDANCE OPEN"
+        "es" -> "ASISTENCIA ABIERTA"
+        else -> "PREZANS OUVRI"
+      }
+    val statusScheduledLabel =
+      when (langNorm) {
+        "fr" -> "PROGRAMMÉ"
+        "en" -> "SCHEDULED"
+        "es" -> "PROGRAMADO"
+        else -> "PWOGWAME"
+      }
+
     Row(
       modifier =
         Modifier.fillMaxWidth()
           .padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 10.dp),
-      verticalAlignment = Alignment.Top,
-      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
     ) {
-      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-        Box(
-          modifier =
-            Modifier.size(44.dp)
-              .shadow(8.dp, CircleShape, ambientColor = ElectricBlue)
-              .clip(CircleShape)
-              .background(
-                Brush.linearGradient(
-                  listOf(
-                    BlueNeon,
-                    ElectricBlue,
-                    Color(0xFF1D4ED8),
-                  )
-                )
-              )
-              .border(1.2.dp, PureWhite.copy(alpha = 0.7f), CircleShape),
-          contentAlignment = Alignment.Center,
-        ) {
-          Icon(
-            imageVector = Icons.Default.Church,
-            contentDescription = service.effectiveTitle,
-            tint = PureWhite,
-            modifier = Modifier.size(22.dp),
-          )
-        }
-        Spacer(modifier = Modifier.width(10.dp))
-        Column {
+      ChurchProfileAvatar(
+        logoUrl = churchLogoUrl,
+        churchName = primaryAuthorTitle,
+        size = 44.dp,
+        modifier = Modifier.testTag("service_church_avatar_${service.id}"),
+      )
+      Spacer(modifier = Modifier.width(12.dp))
+      Column(
+        modifier = Modifier.weight(1f),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+      ) {
+        // Author / Church data first
+        Text(
+          text = primaryAuthorTitle,
+          style = MaterialTheme.typography.titleSmall,
+          color = PureWhite,
+          fontWeight = FontWeight.Bold,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+          modifier = Modifier.testTag("service_author_title_${service.id}"),
+        )
+        if (!secondaryAuthorLabel.isNullOrBlank()) {
           Text(
-            text = service.churchName.ifBlank { service.categoryLabelHt },
-            style = MaterialTheme.typography.titleSmall,
-            color = PureWhite,
-            fontWeight = FontWeight.Bold,
+            text = secondaryAuthorLabel,
+            style = MaterialTheme.typography.labelSmall,
+            color = BlueNeon.copy(alpha = 0.9f),
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
           )
-          Spacer(modifier = Modifier.height(3.dp))
+        }
+        // Published date cleanly aligned underneath with full width (no crowding)
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(5.dp),
+          modifier = Modifier.padding(top = 1.dp),
+        ) {
+          Icon(
+            imageVector = Icons.Default.Schedule,
+            contentDescription = null,
+            tint = BlueNeon.copy(alpha = 0.85f),
+            modifier = Modifier.size(12.dp),
+          )
+          Text(
+            text = publishedTimestampText,
+            style = MaterialTheme.typography.labelSmall,
+            color = MutedGlassText.copy(alpha = 0.92f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag("service_timestamp_${service.id}"),
+          )
+        }
+      }
+    }
+
+    // 1b. Horizontal Live / Status / Category Badges Strip placed cleanly side-by-side underneath Header
+    Row(
+      modifier =
+        Modifier.fillMaxWidth()
+          .horizontalScroll(rememberScrollState())
+          .padding(start = 14.dp, end = 14.dp, bottom = 10.dp)
+          .testTag("service_status_badges_row_${service.id}"),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      if (isLiveActive) {
+        Box(
+          modifier =
+            Modifier.shadow(8.dp, RoundedCornerShape(8.dp), ambientColor = LiveBadgeRed)
+              .clip(RoundedCornerShape(8.dp))
+              .background(
+                Brush.horizontalGradient(listOf(LiveBadgeRed, Color(0xFFD91432)))
+              )
+              .border(1.dp, PureWhite.copy(alpha = 0.65f), RoundedCornerShape(8.dp))
+              .padding(horizontal = 8.dp, vertical = 3.dp)
+              .testTag("service_live_badge_${service.id}"),
+        ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
           ) {
             Box(
-              modifier =
-                Modifier.clip(RoundedCornerShape(6.dp))
-                  .background(ElectricBlue.copy(alpha = 0.24f))
-                  .border(0.8.dp, BlueNeon.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
-                  .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-              Text(
-                text = service.categoryLabelHt,
-                style = MaterialTheme.typography.labelSmall,
-                color = BlueNeon,
-                fontWeight = FontWeight.Bold,
-              )
-            }
-            Text(
-              text = "•",
-              color = MutedGlassText.copy(alpha = 0.6f),
-              style = MaterialTheme.typography.labelSmall,
-            )
-            Icon(
-              imageVector = Icons.Default.Schedule,
-              contentDescription = null,
-              tint = BlueNeon.copy(alpha = 0.85f),
-              modifier = Modifier.size(12.dp),
+              modifier = Modifier.size(6.dp).clip(CircleShape).background(PureWhite)
             )
             Text(
-              text = publishedTimestampText,
+              text = stringResource(R.string.feed_live_badge),
               style = MaterialTheme.typography.labelSmall,
-              color = MutedGlassText.copy(alpha = 0.9f),
-              modifier = Modifier.testTag("service_timestamp_${service.id}"),
+              color = PureWhite,
+              fontWeight = FontWeight.ExtraBold,
+              maxLines = 1,
+            )
+          }
+        }
+
+        if (isTimerTicking) {
+          Box(
+            modifier =
+              Modifier.clip(RoundedCornerShape(8.dp))
+                .background(Color(0xCC09142B))
+                .border(0.9.dp, LiveBadgeRed.copy(alpha = 0.75f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 7.dp, vertical = 3.dp)
+                .testTag("service_live_timer_${service.id}"),
+          ) {
+            Text(
+              text = timerLabel,
+              style =
+                MaterialTheme.typography.labelSmall.copy(
+                  fontFamily = FontFamily.Monospace,
+                  fontFeatureSettings = "tnum",
+                ),
+              color = PureWhite,
+              fontWeight = FontWeight.Bold,
+              maxLines = 1,
             )
           }
         }
       }
 
-      Column(
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(5.dp),
-      ) {
-        if (isLiveActive) {
+      if (isPermanentlyLocked) {
+        Box(
+          modifier =
+            Modifier.clip(RoundedCornerShape(50))
+              .background(Color(0x661E293B))
+              .border(0.9.dp, MutedGlassText.copy(alpha = 0.45f), RoundedCornerShape(50))
+              .padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
+          Text(
+            text = statusEndedLabel,
+            style = MaterialTheme.typography.labelSmall,
+            color = MutedGlassText,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+          )
+        }
+      } else if (service.isOpenForAttendance) {
+        Box(
+          modifier =
+            Modifier.clip(RoundedCornerShape(50))
+              .background(SuccessGreen.copy(alpha = 0.2f))
+              .border(1.dp, SuccessGreen.copy(alpha = 0.8f), RoundedCornerShape(50))
+              .padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
           ) {
             Box(
-              modifier =
-                Modifier.shadow(8.dp, RoundedCornerShape(8.dp), ambientColor = LiveBadgeRed)
-                  .clip(RoundedCornerShape(8.dp))
-                  .background(
-                    Brush.horizontalGradient(listOf(LiveBadgeRed, Color(0xFFD91432)))
-                  )
-                  .border(1.dp, PureWhite.copy(alpha = 0.65f), RoundedCornerShape(8.dp))
-                  .padding(horizontal = 8.dp, vertical = 3.dp)
-                  .testTag("service_live_badge_${service.id}"),
-            ) {
-              Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-              ) {
-                Box(
-                  modifier = Modifier.size(6.dp).clip(CircleShape).background(PureWhite)
-                )
-                Text(
-                  text = stringResource(R.string.feed_live_badge),
-                  style = MaterialTheme.typography.labelSmall,
-                  color = PureWhite,
-                  fontWeight = FontWeight.ExtraBold,
-                )
-              }
-            }
-
-            if (isTimerTicking) {
-              Box(
-                modifier =
-                  Modifier.clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xCC09142B))
-                    .border(0.9.dp, LiveBadgeRed.copy(alpha = 0.75f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 7.dp, vertical = 3.dp)
-                    .testTag("service_live_timer_${service.id}"),
-              ) {
-                Text(
-                  text = timerLabel,
-                  style =
-                    MaterialTheme.typography.labelSmall.copy(
-                      fontFamily = FontFamily.Monospace,
-                      fontFeatureSettings = "tnum",
-                    ),
-                  color = PureWhite,
-                  fontWeight = FontWeight.Bold,
-                )
-              }
-            }
-          }
-        }
-
-        if (isPermanentlyLocked) {
-          Box(
-            modifier =
-              Modifier.clip(RoundedCornerShape(50))
-                .background(Color(0x661E293B))
-                .border(0.9.dp, MutedGlassText.copy(alpha = 0.45f), RoundedCornerShape(50))
-                .padding(horizontal = 8.dp, vertical = 3.dp)
-          ) {
-            Text(
-              text = "FINI",
-              style = MaterialTheme.typography.labelSmall,
-              color = MutedGlassText,
-              fontWeight = FontWeight.Bold,
+              modifier = Modifier.size(6.dp).clip(CircleShape).background(SuccessGreen)
             )
-          }
-        } else if (service.isOpenForAttendance) {
-          Box(
-            modifier =
-              Modifier.clip(RoundedCornerShape(50))
-                .background(SuccessGreen.copy(alpha = 0.2f))
-                .border(1.dp, SuccessGreen.copy(alpha = 0.8f), RoundedCornerShape(50))
-                .padding(horizontal = 8.dp, vertical = 3.dp)
-          ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-              Box(
-                modifier = Modifier.size(6.dp).clip(CircleShape).background(SuccessGreen)
-              )
-              Text(
-                text = "PREZANS OUVRI",
-                style = MaterialTheme.typography.labelSmall,
-                color = PureWhite,
-                fontWeight = FontWeight.Bold,
-              )
-            }
-          }
-        } else if (isBeforeStart) {
-          Box(
-            modifier =
-              Modifier.clip(RoundedCornerShape(50))
-                .background(ElectricBlue.copy(alpha = 0.18f))
-                .border(0.9.dp, BlueNeon.copy(alpha = 0.55f), RoundedCornerShape(50))
-                .padding(horizontal = 8.dp, vertical = 3.dp)
-          ) {
             Text(
-              text = "PWOGWAME",
+              text = statusAttendanceOpenLabel,
               style = MaterialTheme.typography.labelSmall,
-              color = BlueNeon,
+              color = PureWhite,
               fontWeight = FontWeight.Bold,
+              maxLines = 1,
             )
           }
         }
+      } else if (isBeforeStart) {
+        Box(
+          modifier =
+            Modifier.clip(RoundedCornerShape(50))
+              .background(ElectricBlue.copy(alpha = 0.18f))
+              .border(0.9.dp, BlueNeon.copy(alpha = 0.55f), RoundedCornerShape(50))
+              .padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
+          Text(
+            text = statusScheduledLabel,
+            style = MaterialTheme.typography.labelSmall,
+            color = BlueNeon,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+          )
+        }
+      }
+
+      Box(
+        modifier =
+          Modifier.clip(RoundedCornerShape(8.dp))
+            .background(ElectricBlue.copy(alpha = 0.22f))
+            .border(0.8.dp, BlueNeon.copy(alpha = 0.52f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+      ) {
+        Text(
+          text = service.categoryLabelHt,
+          style = MaterialTheme.typography.labelSmall,
+          color = BlueNeon,
+          fontWeight = FontWeight.Bold,
+          maxLines = 1,
+        )
       }
     }
 
@@ -1800,7 +1847,10 @@ fun PremiumServiceCard(
         Row(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(6.dp),
-          modifier = Modifier.padding(bottom = 2.dp).testTag("service_schedule_header_${service.id}"),
+          modifier =
+            Modifier.fillMaxWidth()
+              .padding(bottom = 2.dp)
+              .testTag("service_schedule_header_${service.id}"),
         ) {
           Icon(
             imageVector = Icons.Default.CalendarMonth,
@@ -1813,7 +1863,7 @@ fun PremiumServiceCard(
             style = MaterialTheme.typography.titleSmall,
             color = BrandGold,
             fontWeight = FontWeight.Bold,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
           )
         }
@@ -2111,8 +2161,10 @@ fun PremiumServiceCard(
               modifier = Modifier.size(19.dp),
             )
             Spacer(modifier = Modifier.width(5.dp))
+            val displayedCommentsCount =
+              maxOf(service.commentsCount, (commentsCountOverride ?: 0).toLong())
             Text(
-              text = service.commentsCount.toString(),
+              text = displayedCommentsCount.toString(),
               style = MaterialTheme.typography.labelLarge,
               color = GlassWhite,
             )
@@ -2158,7 +2210,7 @@ fun PremiumServiceCard(
   }
 
   if (showFullImageDialog && !mediaUrl.isNullOrBlank()) {
-    AnnouncementImageLightboxDialog(
+    AnnouncementMediaShowcaseLightbox(
       imageSource = mediaUrl,
       title = service.effectiveTitle,
       department = "${service.categoryLabelHt} • $serviceDateSubtitle",
@@ -2420,7 +2472,93 @@ private fun resolveMemberPhotoForRole(personName: String, churchMembers: List<Me
   return resolvedMember?.effectivePhotoUrl
 }
 
-private fun formatServiceTimestamp(service: ChurchService): String {
+@Composable
+fun ChurchProfileAvatar(
+  logoUrl: String?,
+  churchName: String,
+  size: Dp = 44.dp,
+  modifier: Modifier = Modifier,
+) {
+  val cleanUrl = remember(logoUrl) { logoUrl?.trim()?.takeIf { it.isNotEmpty() } }
+  val decodedBitmap =
+    remember(cleanUrl) {
+      cleanUrl?.let { ImageCompressor.decodeBase64DataUrlToBitmap(it) }
+    }
+  var remoteLoadFailed by remember(cleanUrl) { mutableStateOf(false) }
+  val initials =
+    remember(churchName) {
+      churchName
+        .trim()
+        .split(Regex("\\s+"))
+        .filter { it.isNotBlank() }
+        .take(2)
+        .mapNotNull { it.firstOrNull()?.uppercaseChar() }
+        .joinToString("")
+        .ifBlank { "" }
+    }
+
+  Box(
+    modifier =
+      modifier
+        .size(size)
+        .shadow(8.dp, CircleShape, ambientColor = ElectricBlue)
+        .clip(CircleShape)
+        .background(
+          Brush.linearGradient(
+            listOf(
+              BlueNeon,
+              ElectricBlue,
+              Color(0xFF1D4ED8),
+            )
+          )
+        )
+        .border(1.2.dp, PureWhite.copy(alpha = 0.72f), CircleShape),
+    contentAlignment = Alignment.Center,
+  ) {
+    when {
+      decodedBitmap != null -> {
+        Image(
+          bitmap = decodedBitmap.asImageBitmap(),
+          contentDescription = churchName.ifBlank { "Logo Legliz" },
+          contentScale = ContentScale.Crop,
+          modifier = Modifier.fillMaxSize(),
+        )
+      }
+      cleanUrl != null && !remoteLoadFailed -> {
+        AsyncImage(
+          model = cleanUrl,
+          contentDescription = churchName.ifBlank { "Logo Legliz" },
+          contentScale = ContentScale.Crop,
+          onError = { remoteLoadFailed = true },
+          modifier = Modifier.fillMaxSize(),
+        )
+      }
+      initials.isNotBlank() -> {
+        Text(
+          text = initials,
+          style = MaterialTheme.typography.titleSmall,
+          color = PureWhite,
+          fontWeight = FontWeight.ExtraBold,
+          maxLines = 1,
+        )
+      }
+      else -> {
+        Icon(
+          imageVector = Icons.Default.Church,
+          contentDescription = churchName.ifBlank { "Logo Legliz" },
+          tint = PureWhite,
+          modifier = Modifier.size(size * 0.5f),
+        )
+      }
+    }
+  }
+}
+
+private fun formatServiceTimestamp(
+  service: ChurchService,
+  languageCode: String = "ht",
+): String {
+  val lang = languageCode.trim().lowercase()
   val ts = service.createdAt
   if (ts != null) {
     val dateObj = ts.toDate()
@@ -2433,7 +2571,12 @@ private fun formatServiceTimestamp(service: ChurchService): String {
       nowCal.get(java.util.Calendar.YEAR) == targetCal.get(java.util.Calendar.YEAR) &&
         nowCal.get(java.util.Calendar.DAY_OF_YEAR) == targetCal.get(java.util.Calendar.DAY_OF_YEAR)
     if (isSameDay) {
-      return "Pibliye jodi a • $timeStr"
+      return when (lang) {
+        "fr" -> "Publié aujourd'hui • $timeStr"
+        "en" -> "Published today • $timeStr"
+        "es" -> "Publicado hoy • $timeStr"
+        else -> "Pibliye jodi a • $timeStr"
+      }
     }
 
     val yesterdayCal =
@@ -2443,14 +2586,32 @@ private fun formatServiceTimestamp(service: ChurchService): String {
         yesterdayCal.get(java.util.Calendar.DAY_OF_YEAR) ==
           targetCal.get(java.util.Calendar.DAY_OF_YEAR)
     if (isYesterday) {
-      return "Pibliye yè • $timeStr"
+      return when (lang) {
+        "fr" -> "Publié hier • $timeStr"
+        "en" -> "Published yesterday • $timeStr"
+        "es" -> "Publicado ayer • $timeStr"
+        else -> "Pibliye yè • $timeStr"
+      }
     }
 
     val dateFormatter =
       java.text.SimpleDateFormat("dd MMM yyyy • hh:mm a", java.util.Locale.getDefault())
-    return "Pibliye ${dateFormatter.format(dateObj)}"
+    val formatted = dateFormatter.format(dateObj)
+    return when (lang) {
+      "fr" -> "Publié le $formatted"
+      "en" -> "Published $formatted"
+      "es" -> "Publicado $formatted"
+      else -> "Pibliye $formatted"
+    }
   }
-  return "Pibliye • ${service.effectiveScheduleLabel}"
+  val prefix =
+    when (lang) {
+      "fr" -> "Publié"
+      "en" -> "Published"
+      "es" -> "Publicado"
+      else -> "Pibliye"
+    }
+  return "$prefix • ${service.formattedScheduleWithDay(languageCode)}"
 }
 
 private fun formatAnnouncementTimestamp(announcement: Announcement): String {
@@ -2502,10 +2663,13 @@ fun PremiumAnnouncementCard(
   onCommentClick: () -> Unit,
   modifier: Modifier = Modifier,
   reactionSummary: TargetReactionSummary? = null,
+  commentsCountOverride: Int? = null,
+  languageCode: String = "ht",
   onSelectReaction: ((OmniReactionType) -> Unit)? = null,
   isAdmin: Boolean = false,
   canEdit: Boolean = isAdmin,
   isUnread: Boolean = false,
+  onMarkRead: (() -> Unit)? = null,
   onCardClick: (() -> Unit)? = null,
   onShareClick: (() -> Unit)? = null,
   onEditClick: (() -> Unit)? = null,
@@ -2513,22 +2677,28 @@ fun PremiumAnnouncementCard(
 ) {
   val context = LocalContext.current
   val haptic = LocalHapticFeedback.current
+  val copy = remember(languageCode) { AnnouncementStrings.forLanguage(languageCode) }
   var showReactionSelector by remember { mutableStateOf(false) }
   var showMoreMenuDialog by remember { mutableStateOf(false) }
   var showConfirmDeleteDialog by remember { mutableStateOf(false) }
   var showImageLightbox by remember { mutableStateOf(false) }
+  var isContentOverflowing by remember(announcement.id, languageCode) { mutableStateOf(false) }
 
+  val resolvedTitle = remember(announcement, languageCode) { announcement.localizedTitle(languageCode) }
+  val resolvedContent = remember(announcement, languageCode) { announcement.localizedContent(languageCode) }
   val effectiveImage = announcement.effectiveImageUrl
-  val shareTitle = "📢 ${announcement.title} (${announcement.department})"
-  val shareBody = announcement.content
+  val shareTitle =
+    if (announcement.department.isNotBlank()) "📢 $resolvedTitle (${announcement.department})"
+    else "📢 $resolvedTitle"
+  val shareBody = resolvedContent
   val timestampLabel =
-    remember(announcement.createdAt, announcement.date) {
-      formatAnnouncementTimestamp(announcement)
+    remember(announcement.createdAt, announcement.updatedAt, announcement.date, announcement.time, languageCode) {
+      AnnouncementStrings.formatTimestamp(announcement, languageCode)
     }
 
   val markReadIfNeeded: () -> Unit = {
     if (isUnread) {
-      onCardClick?.invoke()
+      onMarkRead?.invoke()
     }
   }
 
@@ -2596,16 +2766,22 @@ fun PremiumAnnouncementCard(
         Spacer(modifier = Modifier.width(12.dp))
         Column {
           Text(
-            text = announcement.title,
+            text = resolvedTitle,
             style = MaterialTheme.typography.titleMedium,
             color = if (isUnread) BrandGold else PureWhite,
             fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
           )
-          Text(
-            text = announcement.department,
-            style = MaterialTheme.typography.bodySmall,
-            color = MutedGlassText,
-          )
+          if (announcement.department.isNotBlank()) {
+            Text(
+              text = announcement.department,
+              style = MaterialTheme.typography.bodySmall,
+              color = MutedGlassText,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+            )
+          }
           Spacer(modifier = Modifier.height(2.dp))
           Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -2644,7 +2820,7 @@ fun PremiumAnnouncementCard(
               )
               Spacer(modifier = Modifier.width(4.dp))
               Text(
-                text = "NOUVO",
+                text = copy.newBadge,
                 style = MaterialTheme.typography.labelSmall,
                 color = PureWhite,
                 fontWeight = FontWeight.ExtraBold,
@@ -2656,7 +2832,7 @@ fun PremiumAnnouncementCard(
         if (announcement.isPinned) {
           Icon(
             imageVector = Icons.Default.Star,
-            contentDescription = null,
+            contentDescription = copy.pinnedBadge,
             tint = BrandGold,
             modifier = Modifier.size(20.dp),
           )
@@ -2664,21 +2840,36 @@ fun PremiumAnnouncementCard(
       }
     }
 
-    if (announcement.content.isNotBlank()) {
+    if (resolvedContent.isNotBlank()) {
       Spacer(modifier = Modifier.height(10.dp))
       Text(
-        text = announcement.content,
-        style = MaterialTheme.typography.bodyLarge,
+        text = resolvedContent,
+        style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 22.sp),
         color = GlassWhite,
+        maxLines = 4,
+        overflow = TextOverflow.Ellipsis,
+        onTextLayout = { layoutResult ->
+          if (layoutResult.hasVisualOverflow) {
+            isContentOverflowing = true
+          }
+        },
         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
       )
+      if ((isContentOverflowing || resolvedContent.length > 180) && onCardClick != null) {
+        AnnouncementReadMorePrompt(
+          label = copy.readFullAction,
+          onClick = onCardClick,
+          modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 4.dp)
+            .testTag("announcement_read_more_${announcement.id}"),
+        )
+      }
     }
 
     if (!effectiveImage.isNullOrBlank()) {
       Spacer(modifier = Modifier.height(10.dp))
       AnnouncementMediaShowcase(
         imageSource = effectiveImage,
-        title = announcement.title,
+        title = resolvedTitle,
         announcementId = announcement.id,
         onImageClick = {
           markReadIfNeeded()
@@ -2746,8 +2937,10 @@ fun PremiumAnnouncementCard(
             modifier = Modifier.size(17.dp),
           )
           Spacer(modifier = Modifier.width(5.dp))
+          val displayedCommentsCount =
+            maxOf(announcement.commentsCount, (commentsCountOverride ?: 0).toLong())
           Text(
-            text = announcement.commentsCount.toString(),
+            text = displayedCommentsCount.toString(),
             style = MaterialTheme.typography.labelMedium,
             color = GlassWhite,
           )
@@ -2796,17 +2989,19 @@ fun PremiumAnnouncementCard(
   if (showMoreMenuDialog) {
     GlassDialog(
       onDismissRequest = { showMoreMenuDialog = false },
-      title = announcement.title,
+      title = resolvedTitle,
     ) {
-      Text(
-        text = announcement.department,
-        style = MaterialTheme.typography.bodySmall,
-        color = MutedGlassText,
-      )
-      Spacer(modifier = Modifier.height(12.dp))
+      if (announcement.department.isNotBlank()) {
+        Text(
+          text = announcement.department,
+          style = MaterialTheme.typography.bodySmall,
+          color = MutedGlassText,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+      }
 
       GlassButton(
-        text = "Pataje Anons sa a",
+        text = copy.shareAction,
         icon = Icons.Default.Share,
         onClick = {
           showMoreMenuDialog = false
@@ -2819,7 +3014,7 @@ fun PremiumAnnouncementCard(
       Spacer(modifier = Modifier.height(8.dp))
 
       GlassButton(
-        text = "Pataje Aplikasyon OmniChurch la",
+        text = copy.shareAppAction,
         icon = Icons.Default.Share,
         isPrimaryNeon = false,
         onClick = {
@@ -2833,14 +3028,14 @@ fun PremiumAnnouncementCard(
       Spacer(modifier = Modifier.height(8.dp))
 
       GlassButton(
-        text = "Kopye Tèks Anons la",
+        text = copy.copyTextAction,
         icon = Icons.Default.ContentCopy,
         isPrimaryNeon = false,
         onClick = {
           showMoreMenuDialog = false
           copyOmniChurchTextToClipboard(
             context = context,
-            label = announcement.title,
+            label = resolvedTitle,
             text = "$shareTitle\n\n$shareBody",
           )
         },
@@ -2853,7 +3048,7 @@ fun PremiumAnnouncementCard(
         HorizontalDivider(color = GlassWhite.copy(alpha = 0.16f))
         Spacer(modifier = Modifier.height(10.dp))
         GlassButton(
-          text = "Modifye Anons sa a",
+          text = copy.editAction,
           icon = Icons.Default.Edit,
           isPrimaryNeon = false,
           onClick = {
@@ -2888,13 +3083,13 @@ fun PremiumAnnouncementCard(
           Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
               imageVector = Icons.Default.DeleteOutline,
-              contentDescription = "Efase Anons la",
+              contentDescription = copy.deleteAction,
               tint = PureWhite,
               modifier = Modifier.size(20.dp),
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = "Efase Anons sa a (Admin)",
+              text = copy.deleteAction,
               style = MaterialTheme.typography.titleSmall,
               color = PureWhite,
               fontWeight = FontWeight.Bold,
@@ -2908,10 +3103,10 @@ fun PremiumAnnouncementCard(
   if (showConfirmDeleteDialog && onDeleteClick != null) {
     GlassDialog(
       onDismissRequest = { showConfirmDeleteDialog = false },
-      title = "Efase Anons la?",
+      title = copy.deleteDialogTitle,
     ) {
       Text(
-        text = "Èske ou sèten ou vle efase anons \"${announcement.title}\" nan baz done legliz la?",
+        text = "\"$resolvedTitle\"",
         style = MaterialTheme.typography.bodyMedium,
         color = GlassWhite,
       )
@@ -2924,7 +3119,7 @@ fun PremiumAnnouncementCard(
           modifier = Modifier.weight(1f),
         )
         GlassButton(
-          text = "Wi, Efase",
+          text = copy.deleteConfirmYes,
           icon = Icons.Default.DeleteOutline,
           onClick = {
             showConfirmDeleteDialog = false
@@ -2938,9 +3133,9 @@ fun PremiumAnnouncementCard(
   }
 
   if (showImageLightbox && !effectiveImage.isNullOrBlank()) {
-    AnnouncementImageLightboxDialog(
+    AnnouncementMediaShowcaseLightbox(
       imageSource = effectiveImage,
-      title = announcement.title,
+      title = resolvedTitle,
       department = announcement.department,
       onDismiss = { showImageLightbox = false },
     )
@@ -3021,7 +3216,7 @@ fun AnnouncementMediaShowcase(
 }
 
 @Composable
-private fun AnnouncementImageLightboxDialog(
+internal fun AnnouncementMediaShowcaseLightbox(
   imageSource: String,
   title: String,
   department: String,

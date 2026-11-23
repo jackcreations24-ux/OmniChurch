@@ -193,12 +193,24 @@ fun CreateServiceBottomSheet(
   var date by remember(editKey) {
     mutableStateOf(initialService?.effectiveDateOnly?.ifBlank { todayDate } ?: todayDate)
   }
-  var startTime by remember(editKey) {
-    mutableStateOf(initialService?.startTime?.ifBlank { "09:00" } ?: "09:00")
+  val initialStartParsed = remember(editKey) {
+    parseServiceTimeTo12Hour(
+      raw = initialService?.startTime.orEmpty(),
+      fallbackTime12 = "09:00",
+      fallbackIsPm = false,
+    )
   }
-  var endTime by remember(editKey) {
-    mutableStateOf(initialService?.endTime?.ifBlank { "11:30" } ?: "11:30")
+  val initialEndParsed = remember(editKey) {
+    parseServiceTimeTo12Hour(
+      raw = initialService?.endTime.orEmpty(),
+      fallbackTime12 = "11:30",
+      fallbackIsPm = false,
+    )
   }
+  var startTime by remember(editKey) { mutableStateOf(initialStartParsed.first) }
+  var startIsPm by remember(editKey) { mutableStateOf(initialStartParsed.second) }
+  var endTime by remember(editKey) { mutableStateOf(initialEndParsed.first) }
+  var endIsPm by remember(editKey) { mutableStateOf(initialEndParsed.second) }
   var theme by remember(editKey) { mutableStateOf(initialService?.theme.orEmpty()) }
   var passage by remember(editKey) { mutableStateOf(initialService?.passage.orEmpty()) }
   var leader by remember(editKey) { mutableStateOf(initialService?.leader.orEmpty()) }
@@ -460,65 +472,157 @@ fun CreateServiceBottomSheet(
             }
           }
 
-          // 3b. Lè Kòmanse
+          // 3b. Lè Kòmanse + Seleksyon AM / PM
           val openStartTimePicker = {
-            val cal = Calendar.getInstance()
-            val parts = startTime.split(":", "h")
-            val h = parts.getOrNull(0)?.trim()?.toIntOrNull() ?: 9
-            val m = parts.getOrNull(1)?.trim()?.take(2)?.toIntOrNull() ?: 0
+            val (h24, m) = parseHourMinute24(startTime, startIsPm, defaultHour24 = 9, defaultMinute = 0)
             TimePickerDialog(
               context,
               { _, hourOfDay, minute ->
-                startTime = String.format(Locale.US, "%02d:%02d", hourOfDay, minute)
+                val (formatted12, pmFlag) = format24HourTo12HourParts(hourOfDay, minute)
+                startTime = formatted12
+                startIsPm = pmFlag
               },
-              h,
+              h24,
               m,
-              true,
+              false,
             ).show()
           }
 
-          MinimalTextField(
-            value = startTime,
-            onValueChange = { startTime = it },
-            label = "Lè Kòmanse (HH:mm)",
-            placeholder = "Egz: 09:00",
-            leadingIcon = Icons.Default.AccessTime,
-            trailingActionIcon = Icons.Default.Schedule,
-            trailingActionDescription = "Chwazi Lè Kòmanse",
-            onTrailingActionClick = openStartTimePicker,
+          Row(
             modifier = Modifier.fillMaxWidth(),
-            testTag = "service_input_start_time",
-          )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            MinimalTextField(
+              value = startTime,
+              onValueChange = { input ->
+                val trimmedUpper = input.trim().uppercase(Locale.US)
+                when {
+                  trimmedUpper.endsWith("PM") -> {
+                    startIsPm = true
+                    startTime = input.replace(Regex("(?i)\\s*pm$"), "").trim()
+                  }
+                  trimmedUpper.endsWith("AM") -> {
+                    startIsPm = false
+                    startTime = input.replace(Regex("(?i)\\s*am$"), "").trim()
+                  }
+                  else -> startTime = input
+                }
+              },
+              label = "Lè Kòmanse (hh:mm)",
+              placeholder = "Egz: 09:00",
+              leadingIcon = Icons.Default.AccessTime,
+              trailingActionIcon = Icons.Default.Schedule,
+              trailingActionDescription = "Chwazi Lè Kòmanse",
+              onTrailingActionClick = openStartTimePicker,
+              keyboardType = KeyboardType.Number,
+              modifier = Modifier.weight(1f),
+              testTag = "service_input_start_time",
+            )
+            AmPmSegmentedToggle(
+              isPm = startIsPm,
+              onSelectPm = { startIsPm = it },
+              testTagPrefix = "service_start_ampm",
+              modifier = Modifier.padding(top = 6.dp),
+            )
+          }
 
-          // 3c. Lè Fini
+          // 3c. Lè Fini + Seleksyon AM / PM
           val openEndTimePicker = {
-            val cal = Calendar.getInstance()
-            val parts = endTime.split(":", "h")
-            val h = parts.getOrNull(0)?.trim()?.toIntOrNull() ?: 11
-            val m = parts.getOrNull(1)?.trim()?.take(2)?.toIntOrNull() ?: 30
+            val (h24, m) = parseHourMinute24(endTime, endIsPm, defaultHour24 = 11, defaultMinute = 30)
             TimePickerDialog(
               context,
               { _, hourOfDay, minute ->
-                endTime = String.format(Locale.US, "%02d:%02d", hourOfDay, minute)
+                val (formatted12, pmFlag) = format24HourTo12HourParts(hourOfDay, minute)
+                endTime = formatted12
+                endIsPm = pmFlag
               },
-              h,
+              h24,
               m,
-              true,
+              false,
             ).show()
           }
 
-          MinimalTextField(
-            value = endTime,
-            onValueChange = { endTime = it },
-            label = "Lè Fini (HH:mm)",
-            placeholder = "Egz: 11:30",
-            leadingIcon = Icons.Default.AccessTime,
-            trailingActionIcon = Icons.Default.Schedule,
-            trailingActionDescription = "Chwazi Lè Fini",
-            onTrailingActionClick = openEndTimePicker,
+          Row(
             modifier = Modifier.fillMaxWidth(),
-            testTag = "service_input_end_time",
-          )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            MinimalTextField(
+              value = endTime,
+              onValueChange = { input ->
+                val trimmedUpper = input.trim().uppercase(Locale.US)
+                when {
+                  trimmedUpper.endsWith("PM") -> {
+                    endIsPm = true
+                    endTime = input.replace(Regex("(?i)\\s*pm$"), "").trim()
+                  }
+                  trimmedUpper.endsWith("AM") -> {
+                    endIsPm = false
+                    endTime = input.replace(Regex("(?i)\\s*am$"), "").trim()
+                  }
+                  else -> endTime = input
+                }
+              },
+              label = "Lè Fini (hh:mm)",
+              placeholder = "Egz: 11:30",
+              leadingIcon = Icons.Default.AccessTime,
+              trailingActionIcon = Icons.Default.Schedule,
+              trailingActionDescription = "Chwazi Lè Fini",
+              onTrailingActionClick = openEndTimePicker,
+              keyboardType = KeyboardType.Number,
+              modifier = Modifier.weight(1f),
+              testTag = "service_input_end_time",
+            )
+            AmPmSegmentedToggle(
+              isPm = endIsPm,
+              onSelectPm = { endIsPm = it },
+              testTagPrefix = "service_end_ampm",
+              modifier = Modifier.padding(top = 6.dp),
+            )
+          }
+
+          // Live Schedule Preview (Dat + Lè AM/PM)
+          val startPreviewLabel = formatDisplay12HourLabel(startTime, startIsPm)
+          val endPreviewLabel = formatDisplay12HourLabel(endTime, endIsPm)
+          val timeRangePreview =
+            when {
+              startPreviewLabel.isNotBlank() && endPreviewLabel.isNotBlank() ->
+                "$startPreviewLabel - $endPreviewLabel"
+              startPreviewLabel.isNotBlank() -> startPreviewLabel
+              else -> ""
+            }
+          if (timeRangePreview.isNotBlank()) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              modifier =
+                Modifier.fillMaxWidth()
+                  .clip(RoundedCornerShape(8.dp))
+                  .background(Color(0xFFF59E0B).copy(alpha = 0.13f))
+                  .border(0.8.dp, Color(0xFFF59E0B).copy(alpha = 0.42f), RoundedCornerShape(8.dp))
+                  .padding(horizontal = 10.dp, vertical = 6.dp)
+                  .testTag("service_time_ampm_preview"),
+            ) {
+              Icon(
+                imageVector = Icons.Default.Schedule,
+                contentDescription = null,
+                tint = Color(0xFFFBBF24),
+                modifier = Modifier.size(15.dp),
+              )
+              Text(
+                text =
+                  if (naturalCreoleDate.isNotBlank() && naturalCreoleDate != date)
+                    "$naturalCreoleDate • $timeRangePreview"
+                  else timeRangePreview,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFFEF3C7),
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+              )
+            }
+          }
         }
 
         // 4. Lidè & Predikatè (Seleksyon Manm rapid oswa Envite)
@@ -772,12 +876,14 @@ fun CreateServiceBottomSheet(
         Button(
           onClick = {
             val tol = lateToleranceMinutesStr.toLongOrNull() ?: 15L
+            val canonicalStartTime = convert12HourToCanonical24Hour(startTime, startIsPm)
+            val canonicalEndTime = convert12HourToCanonical24Hour(endTime, endIsPm)
             onSubmit(
               title,
               selectedCategory,
               date,
-              startTime,
-              endTime,
+              canonicalStartTime,
+              canonicalEndTime,
               theme.takeIf { it.isNotBlank() },
               passage.takeIf { it.isNotBlank() },
               leader.takeIf { it.isNotBlank() },
@@ -1419,4 +1525,146 @@ internal fun MinimalTextField(
     ),
     modifier = modifier.testTag(testTag),
   )
+}
+
+@Composable
+private fun AmPmSegmentedToggle(
+  isPm: Boolean,
+  onSelectPm: (Boolean) -> Unit,
+  testTagPrefix: String,
+  modifier: Modifier = Modifier,
+) {
+  Row(
+    modifier =
+      modifier
+        .height(54.dp)
+        .clip(RoundedCornerShape(12.dp))
+        .background(Color(0xFF1E293B).copy(alpha = 0.72f))
+        .border(1.dp, Color(0xFF334155).copy(alpha = 0.75f), RoundedCornerShape(12.dp))
+        .padding(3.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(3.dp),
+  ) {
+    val segments = listOf(false to "AM", true to "PM")
+    segments.forEach { (pmValue, label) ->
+      val selected = isPm == pmValue
+      Box(
+        modifier =
+          Modifier
+            .width(46.dp)
+            .height(48.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(
+              if (selected) Color(0xFFF59E0B).copy(alpha = 0.24f) else Color.Transparent
+            )
+            .border(
+              width = if (selected) 1.dp else 0.dp,
+              color = if (selected) Color(0xFFF59E0B) else Color.Transparent,
+              shape = RoundedCornerShape(9.dp),
+            )
+            .clickable { onSelectPm(pmValue) }
+            .testTag("${testTagPrefix}_${label.lowercase(Locale.US)}"),
+        contentAlignment = Alignment.Center,
+      ) {
+        Text(
+          text = label,
+          style = MaterialTheme.typography.labelMedium,
+          color = if (selected) Color(0xFFFBBF24) else Color(0xFF94A3B8),
+          fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+          maxLines = 1,
+        )
+      }
+    }
+  }
+}
+
+private fun format24HourTo12HourParts(hour24: Int, minute: Int): Pair<String, Boolean> {
+  val safeHour = hour24.coerceIn(0, 23)
+  val safeMinute = minute.coerceIn(0, 59)
+  val isPm = safeHour >= 12
+  val hour12 =
+    when {
+      safeHour == 0 -> 12
+      safeHour > 12 -> safeHour - 12
+      else -> safeHour
+    }
+  return String.format(Locale.US, "%02d:%02d", hour12, safeMinute) to isPm
+}
+
+private fun parseServiceTimeTo12Hour(
+  raw: String,
+  fallbackTime12: String,
+  fallbackIsPm: Boolean,
+): Pair<String, Boolean> {
+  val cleaned = raw.trim().replace("h", ":", ignoreCase = true)
+  if (cleaned.isBlank()) return fallbackTime12 to fallbackIsPm
+
+  val upper = cleaned.uppercase(Locale.US)
+  val explicitPm = upper.contains("PM")
+  val explicitAm = upper.contains("AM")
+  val numericPart = upper.replace("AM", "").replace("PM", "").trim()
+  val parts = numericPart.split(":")
+  val hourRaw = parts.getOrNull(0)?.trim()?.toIntOrNull() ?: return fallbackTime12 to fallbackIsPm
+  val minuteRaw = (parts.getOrNull(1)?.trim()?.take(2)?.toIntOrNull() ?: 0).coerceIn(0, 59)
+
+  return when {
+    explicitPm || explicitAm -> {
+      val h12 =
+        when {
+          hourRaw == 0 -> 12
+          hourRaw > 12 -> hourRaw - 12
+          else -> hourRaw.coerceIn(1, 12)
+        }
+      String.format(Locale.US, "%02d:%02d", h12, minuteRaw) to explicitPm
+    }
+    hourRaw in 0..23 -> format24HourTo12HourParts(hourRaw, minuteRaw)
+    else -> fallbackTime12 to fallbackIsPm
+  }
+}
+
+private fun parseHourMinute24(
+  time12Or24: String,
+  isPm: Boolean,
+  defaultHour24: Int,
+  defaultMinute: Int,
+): Pair<Int, Int> {
+  val cleaned = time12Or24.trim().replace("h", ":", ignoreCase = true)
+  val parts = cleaned.split(":")
+  val rawHour = parts.getOrNull(0)?.trim()?.toIntOrNull() ?: return defaultHour24 to defaultMinute
+  val minute = (parts.getOrNull(1)?.trim()?.take(2)?.toIntOrNull() ?: 0).coerceIn(0, 59)
+  val hour24 =
+    when {
+      rawHour in 13..23 -> rawHour
+      rawHour == 0 -> if (isPm) 12 else 0
+      rawHour == 12 -> if (isPm) 12 else 0
+      rawHour in 1..11 -> if (isPm) rawHour + 12 else rawHour
+      else -> defaultHour24
+    }
+  return hour24 to minute
+}
+
+private fun convert12HourToCanonical24Hour(timeInput: String, isPm: Boolean): String {
+  val cleaned = timeInput.trim().replace("h", ":", ignoreCase = true)
+  if (cleaned.isBlank()) return ""
+  val parts = cleaned.split(":")
+  val rawHour = parts.getOrNull(0)?.trim()?.toIntOrNull() ?: return cleaned
+  val minute = (parts.getOrNull(1)?.trim()?.take(2)?.toIntOrNull() ?: 0).coerceIn(0, 59)
+  val hour24 =
+    when {
+      rawHour in 13..23 -> rawHour
+      rawHour == 0 -> if (isPm) 12 else 0
+      rawHour == 12 -> if (isPm) 12 else 0
+      rawHour in 1..11 -> if (isPm) rawHour + 12 else rawHour
+      else -> return cleaned
+    }
+  return String.format(Locale.US, "%02d:%02d", hour24, minute)
+}
+
+private fun formatDisplay12HourLabel(timeInput: String, isPm: Boolean): String {
+  val canonical24 = convert12HourToCanonical24Hour(timeInput, isPm)
+  val parts = canonical24.split(":")
+  val h24 = parts.getOrNull(0)?.toIntOrNull() ?: return ""
+  val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
+  val (t12, pmFlag) = format24HourTo12HourParts(h24, m)
+  return "$t12 ${if (pmFlag) "PM" else "AM"}"
 }

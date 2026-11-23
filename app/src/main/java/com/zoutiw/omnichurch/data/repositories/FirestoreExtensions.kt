@@ -3,6 +3,7 @@ package com.zoutiw.omnichurch.data.repositories
 import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.zoutiw.omnichurch.data.models.Announcement
 import com.zoutiw.omnichurch.data.models.AnnouncementComment
@@ -90,6 +91,7 @@ object FirestoreDocumentMapper {
     val value = this[key] ?: return default
     return when (value) {
       is String -> value.ifEmpty { default }
+      is DocumentReference -> value.id.ifEmpty { default }
       is Number,
       is Boolean -> value.toString()
       else -> default
@@ -108,6 +110,7 @@ object FirestoreDocumentMapper {
     val value = this[key] ?: return null
     return when (value) {
       is String -> value.takeIf { it.isNotEmpty() }
+      is DocumentReference -> value.id.takeIf { it.isNotEmpty() }
       is Number,
       is Boolean -> value.toString()
       else -> null
@@ -253,7 +256,7 @@ object FirestoreDocumentMapper {
       adminGooglePhoto = data.optNullableString("adminGooglePhoto"),
       adminAuthMethod = data.optNullableString("adminAuthMethod"),
       quickPinEnabled = data.optBoolean("quickPinEnabled", false),
-      autoLockMinutes = data.optInt("autoLockMinutes", 5),
+      autoLockMinutes = data.optInt("autoLockMinutes", 0),
       adminPasscodeUpdatedAt = data.optNullableTimestampString("adminPasscodeUpdatedAt"),
     )
   }
@@ -281,20 +284,25 @@ object FirestoreDocumentMapper {
     val firstName = data.optString("firstName")
     val lastName = data.optString("lastName")
     val fullName =
-      data.optString("fullName").ifBlank { "$firstName $lastName".trim() }
+      data.optString("fullName")
+        .ifBlank { "$firstName $lastName".trim() }
+        .ifBlank { data.optFirstNonBlank("name", "displayName") }
     val nfcUid = data.optFirstNonBlank("nfcCardUid", "nfcTagUid").trim()
+    val resolvedMemberId = data.optFirstNullableString("memberId", "matrikil")
+    val resolvedMemberCode = data.optFirstNonBlank("memberCode", "memberId", "matrikil", "code")
+    val resolvedChurchId = data.optFirstNonBlank("churchId", "church_id", "organizationId")
     return Member(
       id = resolvedId,
-      memberId = data.optNullableString("memberId"),
+      memberId = resolvedMemberId,
       userId = data.optString("userId"),
-      churchId = data.optString("churchId"),
+      churchId = resolvedChurchId,
       churchName = data.optString("churchName"),
       churchLogoUrl = data.optNullableString("churchLogoUrl"),
       firstName = firstName,
       lastName = lastName,
       fullName = fullName,
-      memberCode = data.optString("memberCode"),
-      phone = data.optNullableString("phone"),
+      memberCode = resolvedMemberCode,
+      phone = data.optFirstNullableString("phone", "phoneNumber", "tel", "mobile"),
       email = data.optNullableString("email"),
       address = data.optString("address"),
       gender = data.optFirstNonBlank("gender", default = "other"),
@@ -303,10 +311,10 @@ object FirestoreDocumentMapper {
       googleEmail = data.optNullableString("googleEmail"),
       googleUid = data.optNullableString("googleUid"),
       googlePhoto = data.optNullableString("googlePhoto"),
-      photoUrl = data.optFirstNullableString("photoUrl", "photo"),
+      photoUrl = data.optFirstNullableString("photoUrl", "photo", "imageUrl", "picture"),
       qrCode = data.optString("qrCode"),
-      department = data.optString("department"),
-      role = data.optFirstNonBlank("role", default = "member"),
+      department = data.optFirstNonBlank("department", "ministry", "ministryDepartment"),
+      role = data.optFirstNonBlank("role", "ministryRole", default = "member"),
       status = data.optFirstNonBlank("status", default = "active"),
       barcodeToken = data.optString("barcodeToken"),
       nfcCardUid = nfcUid,
@@ -354,8 +362,13 @@ object FirestoreDocumentMapper {
       status = data.optFirstNonBlank("status", default = "active"),
       startTimeEpochMillis = data.optEpochMillis("startTimeEpochMillis", 0L),
       lateToleranceMinutes = data.optLong("lateToleranceMinutes", 15L),
-      isOpenForAttendance = data.optBoolean("isOpenForAttendance", false),
-      isLive = data.optBoolean("isLive", false),
+      isOpenForAttendance = data.optBoolean("isOpenForAttendance", false) && !data.optBoolean("isPermanentlyEnded", false),
+      wasOpenedForAttendance = data.optBoolean("wasOpenedForAttendance", false),
+      isPermanentlyEnded = data.optBoolean("isPermanentlyEnded", false),
+      isLive = data.optBoolean("isLive", false) && !data.optBoolean("isPermanentlyEnded", false),
+      endedAt = data.optNullableTimestampString("endedAt"),
+      reminderSentAt = data.optNullableTimestampString("reminderSentAt"),
+      notes = data.optNullableString("notes"),
       authorId = data.optString("authorId"),
       authorName = data.optString("authorName"),
       reactionsCount = data.optLong("reactionsCount", 0L),
@@ -369,6 +382,7 @@ object FirestoreDocumentMapper {
     val resolvedId = documentId.trim().ifEmpty { data.optString("id").trim() }
     val resolvedPoster = data.optNullableString("posterUrl")
     val resolvedImage = data.optFirstNullableString("imageUrl", "posterUrl") ?: resolvedPoster
+    val resolvedPinned = data.optBoolean("isPinned", data.optBoolean("pinned", false))
     return Announcement(
       id = resolvedId,
       churchId = data.optString("churchId"),
@@ -377,17 +391,31 @@ object FirestoreDocumentMapper {
       category = data.optFirstNonBlank("category", default = "anons"),
       department = data.optString("department"),
       date = data.optNullableString("date"),
-      targetAudience = data.optFirstNonBlank("targetAudience", default = "Tout moun"),
-      isPinned = data.optBoolean("isPinned", false),
+      time = data.optNullableString("time"),
+      targetAudience = data.optFirstNonBlank("targetAudience", "audience", default = "Tout moun"),
+      priority = data.optFirstNonBlank("priority", default = "normal"),
+      expiresAt = data.optNullableTimestampString("expiresAt"),
+      isPinned = resolvedPinned,
+      isPublished = data.optBoolean("isPublished", true),
       showToastOnLogin = data.optBoolean("showToastOnLogin", false),
       toastAlertLevel = data.optFirstNonBlank("toastAlertLevel", default = "info"),
       isScheduledNotification = data.optBoolean("isScheduledNotification", false),
       scheduledNotificationDate = data.optNullableTimestampString("scheduledNotificationDate"),
       posterUrl = resolvedPoster,
       imageUrl = resolvedImage,
+      imageCaption = data.optNullableString("imageCaption"),
       serviceId = data.optNullableString("serviceId"),
-      authorId = data.optString("authorId"),
-      authorName = data.optString("authorName"),
+      authorId = data.optFirstNonBlank("authorId", "createdBy"),
+      authorName = data.optFirstNonBlank("authorName", "author"),
+      authorPhotoUrl = data.optNullableString("authorPhotoUrl"),
+      titleHt = data.optNullableString("title_ht"),
+      titleFr = data.optNullableString("title_fr"),
+      titleEn = data.optNullableString("title_en"),
+      titleEs = data.optNullableString("title_es"),
+      contentHt = data.optNullableString("content_ht"),
+      contentFr = data.optNullableString("content_fr"),
+      contentEn = data.optNullableString("content_en"),
+      contentEs = data.optNullableString("content_es"),
       reactionsCount = data.optLong("reactionsCount", 0L),
       commentsCount = data.optLong("commentsCount", 0L),
       createdAt = data.optTimestamp("createdAt"),
@@ -431,6 +459,10 @@ object FirestoreDocumentMapper {
         ?: System.currentTimeMillis()
     val effectiveCreatedAt = createdTimestamp ?: Timestamp(Date(parsedEpoch))
 
+    val resolvedRole = data.optFirstNonBlank("attendanceRole", default = "member")
+    val resolvedIsVisitor =
+      data.optBoolean("isVisitor", false) || resolvedRole.equals("visitor", ignoreCase = true)
+
     return AttendanceRecord(
       id = resolvedId,
       churchId = data.optString("churchId"),
@@ -446,6 +478,10 @@ object FirestoreDocumentMapper {
       status = data.optFirstNonBlank("status", "attendanceStatus", default = "on_time"),
       checkInMethod = data.optFirstNonBlank("checkInMethod", default = "qr_scanner"),
       barcodeToken = data.optString("barcodeToken"),
+      attendanceRole = resolvedRole,
+      isVisitor = resolvedIsVisitor,
+      homeChurchId = data.optNullableString("homeChurchId"),
+      homeChurchName = data.optNullableString("homeChurchName"),
       timestamp = parsedEpoch,
       createdAt = effectiveCreatedAt,
     )

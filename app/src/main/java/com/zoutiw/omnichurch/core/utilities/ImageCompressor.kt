@@ -46,12 +46,32 @@ object ImageCompressor {
         bitmap
       }
 
-    val outputStream = ByteArrayOutputStream()
-    scaledBitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
-    val bytes = outputStream.toByteArray()
-    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-    return "data:image/jpeg;base64,$base64"
+    var currentBitmap = scaledBitmap
+    var currentQuality = quality.coerceIn(30, 95)
+    var dataUrl: String
+    while (true) {
+      val outputStream = ByteArrayOutputStream()
+      currentBitmap.compress(Bitmap.CompressFormat.JPEG, currentQuality, outputStream)
+      val bytes = outputStream.toByteArray()
+      val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+      dataUrl = "data:image/jpeg;base64,$base64"
+      if (dataUrl.length <= MAX_FIRESTORE_DATA_URL_CHARS) {
+        break
+      }
+      if (currentQuality > 45) {
+        currentQuality = (currentQuality - 15).coerceAtLeast(45)
+      } else if (currentBitmap.width > 360 || currentBitmap.height > 360) {
+        val nextW = (currentBitmap.width * 0.75f).toInt().coerceAtLeast(200)
+        val nextH = (currentBitmap.height * 0.75f).toInt().coerceAtLeast(200)
+        currentBitmap = Bitmap.createScaledBitmap(currentBitmap, nextW, nextH, true)
+      } else {
+        break
+      }
+    }
+    return dataUrl
   }
+
+  private const val MAX_FIRESTORE_DATA_URL_CHARS = 550_000
 
   /**
    * Reads an image Uri, handles Exif orientation, compresses to max 400x400 JPEG 80%,

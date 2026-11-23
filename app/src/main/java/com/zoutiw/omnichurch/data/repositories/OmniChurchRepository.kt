@@ -11,6 +11,7 @@ import com.zoutiw.omnichurch.data.models.Church
 import com.zoutiw.omnichurch.data.models.ChurchNotification
 import com.zoutiw.omnichurch.data.models.ChurchService
 import com.zoutiw.omnichurch.data.models.Member
+import com.zoutiw.omnichurch.data.models.PublicVerificationResolution
 import com.zoutiw.omnichurch.data.models.ScannerValidationOutcome
 import com.zoutiw.omnichurch.data.models.UserProfile
 import com.google.firebase.firestore.FirebaseFirestore
@@ -32,11 +33,29 @@ class OmniChurchRepository(
   val attendanceRepository: AttendanceRepository = AttendanceRepository(db),
   val notificationRepository: NotificationRepository = NotificationRepository(db),
 ) {
-  constructor(context: Context) : this(FirestoreProvider.get(context))
+  constructor(context: Context) : this(FirestoreProvider.get(context), context)
+
+  constructor(db: FirebaseFirestore, context: Context) : this(
+    db = db,
+    churchRepository = ChurchRepository(db),
+    authRepository =
+      AuthRepository(
+        db = db,
+        churchRepository = ChurchRepository(db),
+        sessionLockManager = com.zoutiw.omnichurch.core.utilities.SessionLockManager(context.applicationContext),
+        preferencesManager = com.zoutiw.omnichurch.core.utilities.OmniPreferencesManager(context.applicationContext),
+      ),
+    memberRepository = MemberRepository(db),
+    serviceRepository = ServiceRepository(db),
+    announcementRepository = AnnouncementRepository(db),
+    attendanceRepository = AttendanceRepository(db),
+    notificationRepository = NotificationRepository(db),
+  )
 
   // Church Delegation
   fun getChurchesFlow(): Flow<List<Church>> = churchRepository.getChurchesFlow()
   fun observeChurches(): Flow<List<Church>> = churchRepository.observeChurches()
+  fun observeChurchesResult(): Flow<Result<List<Church>>> = churchRepository.observeChurchesResult()
   suspend fun fetchAllChurches(): List<Church> = churchRepository.fetchAllChurches()
   fun observeChurch(churchId: String): Flow<Church?> = churchRepository.observeChurch(churchId)
   suspend fun setupChurchAndMemberProfile(
@@ -107,6 +126,22 @@ class OmniChurchRepository(
   ): Result<Church> =
     authRepository.signInAdminWithEmailAndPassword(email, password, selectedChurchId)
 
+  suspend fun signInAdminSmartWithEmailAndPassword(
+    email: String,
+    password: String,
+  ): Result<AuthRepository.AdminAutoLoginResolution> =
+    authRepository.signInAdminSmartWithEmailAndPassword(email, password)
+
+  suspend fun signInAdminSmartWithCurrentGoogleUser(): Result<AuthRepository.AdminAutoLoginResolution> =
+    authRepository.signInAdminSmartWithCurrentGoogleUser()
+
+  suspend fun finalizeAdminChurchSelection(church: Church): Result<Church> =
+    authRepository.finalizeAdminChurchSelection(church)
+
+  suspend fun signOutFirebaseAuthOnly() {
+    authRepository.signOutAdmin()
+  }
+
   suspend fun sendAdminPasswordResetEmail(email: String): Result<Unit> =
     authRepository.sendPasswordResetEmail(email)
 
@@ -127,12 +162,24 @@ class OmniChurchRepository(
     memberId: String? = null,
   ) = authRepository.syncUserChurchContext(churchId, churchName, memberId)
 
+  suspend fun resolveAutoRebindChurchIfUniquelyOwned(failedChurchId: String?): Church? =
+    authRepository.resolveAutoRebindChurchIfUniquelyOwned(failedChurchId)
+
+  suspend fun refreshCurrentUserToken(): Boolean =
+    authRepository.refreshCurrentUserToken()
+
   // Member Delegation
   suspend fun fetchMembersForChurch(churchId: String, churchCode: String? = null): List<Member> =
     memberRepository.fetchMembersForChurch(churchId, churchCode)
 
   fun observeChurchMembers(churchId: String, churchCode: String? = null): Flow<List<Member>> =
     memberRepository.observeChurchMembers(churchId, churchCode)
+
+  fun observeChurchMembersResult(
+    churchId: String,
+    churchCode: String? = null,
+  ): Flow<Result<List<Member>>> =
+    memberRepository.observeChurchMembersResult(churchId, churchCode)
 
   fun observeCurrentMember(userId: String): Flow<Member?> =
     memberRepository.observeCurrentMember(userId)
@@ -201,6 +248,15 @@ class OmniChurchRepository(
     memberRepository.bindNfcCardUidToMember(
       memberDocId = memberDocId,
       nfcCardUid = nfcCardUid,
+    )
+
+  suspend fun resolveMemberCardVerification(
+    rawTokenOrCode: String,
+    fallbackChurchId: String? = null,
+  ): Result<PublicVerificationResolution> =
+    memberRepository.resolveMemberCardVerification(
+      rawTokenOrCode = rawTokenOrCode,
+      fallbackChurchId = fallbackChurchId,
     )
 
   // Service Delegation
@@ -286,6 +342,8 @@ class OmniChurchRepository(
     reader: String?,
     musicians: String?,
     ushers: String?,
+    sendReminder24h: Boolean? = null,
+    imageUrl: String? = null,
   ): Result<Unit> =
     serviceRepository.updateService(
       serviceId = serviceId,
@@ -306,6 +364,8 @@ class OmniChurchRepository(
       reader = reader,
       musicians = musicians,
       ushers = ushers,
+      sendReminder24h = sendReminder24h,
+      imageUrl = imageUrl,
     )
 
   suspend fun deleteService(serviceId: String): Result<Unit> =
@@ -314,6 +374,9 @@ class OmniChurchRepository(
   // Announcement Delegation
   fun observeAnnouncements(churchId: String): Flow<List<Announcement>> =
     announcementRepository.observeAnnouncements(churchId)
+
+  fun observeAnnouncementsResult(churchId: String): Flow<Result<List<Announcement>>> =
+    announcementRepository.observeAnnouncementsResult(churchId)
 
   suspend fun createAnnouncement(
     churchId: String,
@@ -352,6 +415,39 @@ class OmniChurchRepository(
       serviceId = serviceId,
     )
 
+  suspend fun updateAnnouncement(
+    announcementId: String,
+    title: String,
+    content: String,
+    department: String,
+    category: String = "anons",
+    date: String? = null,
+    targetAudience: String = "Tout moun",
+    isPinned: Boolean = false,
+    showToastOnLogin: Boolean = false,
+    toastAlertLevel: String = "info",
+    isScheduledNotification: Boolean = false,
+    scheduledNotificationDate: String? = null,
+    posterUrl: String? = null,
+    serviceId: String? = null,
+  ): Result<Unit> =
+    announcementRepository.updateAnnouncement(
+      announcementId = announcementId,
+      title = title,
+      content = content,
+      department = department,
+      category = category,
+      date = date,
+      targetAudience = targetAudience,
+      isPinned = isPinned,
+      showToastOnLogin = showToastOnLogin,
+      toastAlertLevel = toastAlertLevel,
+      isScheduledNotification = isScheduledNotification,
+      scheduledNotificationDate = scheduledNotificationDate,
+      posterUrl = posterUrl,
+      serviceId = serviceId,
+    )
+
   suspend fun deleteAnnouncement(announcementId: String): Result<Unit> =
     announcementRepository.deleteAnnouncement(announcementId)
 
@@ -376,6 +472,9 @@ class OmniChurchRepository(
       actorId = actorId,
       isCommentTarget = isCommentTarget,
     )
+
+  fun observeChurchComments(churchId: String): Flow<List<AnnouncementComment>> =
+    announcementRepository.observeChurchComments(churchId)
 
   fun observeComments(churchId: String, targetId: String): Flow<List<AnnouncementComment>> =
     announcementRepository.observeComments(churchId, targetId)

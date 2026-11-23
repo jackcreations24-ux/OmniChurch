@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -40,9 +41,16 @@ import java.io.FileOutputStream
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+
+data class RememberedAdminCredentials(
+  val rememberEnabled: Boolean = true,
+  val email: String = "",
+  val password: String = "",
+)
 
 private val Context.omniSessionDataStore by
   preferencesDataStore(name = "omni_church_session_prefs")
@@ -67,8 +75,30 @@ class OmniPreferencesManager(private val context: Context) {
   private val keyCachedMemberName = stringPreferencesKey("cached_member_name")
   private val keyLanguageCode = stringPreferencesKey("omnichurch_lang_v1")
 
+  // Remember Me (Encrypted Admin Email + Password Prefill)
+  private val keyRememberAdminEnabled = booleanPreferencesKey("remember_admin_credentials_enabled_v1")
+  private val keyRememberedAdminEmail = stringPreferencesKey("remembered_admin_email_v1")
+  private val keyRememberedAdminSecret = stringPreferencesKey("remembered_admin_secret_v1")
+
+  private val safePreferencesFlow =
+    context.omniSessionDataStore.data.catch { emit(emptyPreferences()) }
+
+  val rememberedAdminCredentialsFlow: Flow<RememberedAdminCredentials> =
+    safePreferencesFlow.map { prefs ->
+      val enabled = prefs[keyRememberAdminEnabled] ?: true
+      if (!enabled) {
+        RememberedAdminCredentials(rememberEnabled = false)
+      } else {
+        RememberedAdminCredentials(
+          rememberEnabled = true,
+          email = prefs[keyRememberedAdminEmail].orEmpty(),
+          password = CryptoSecurity.decryptLocalSecret(prefs[keyRememberedAdminSecret]),
+        )
+      }
+    }
+
   val sessionStateFlow: Flow<OmniSessionState> =
-    context.omniSessionDataStore.data.map { prefs ->
+    safePreferencesFlow.map { prefs ->
       OmniSessionState(
         isInitialized = true,
         activeChurchId = prefs[keyActiveChurchId].orEmpty(),
@@ -84,10 +114,10 @@ class OmniPreferencesManager(private val context: Context) {
     }
 
   val cachedQrTokenFlow: Flow<String?> =
-    context.omniSessionDataStore.data.map { prefs -> prefs[keyCachedQrToken] }
+    safePreferencesFlow.map { prefs -> prefs[keyCachedQrToken] }
 
   val languageCodeFlow: Flow<String> =
-    context.omniSessionDataStore.data.map { prefs ->
+    safePreferencesFlow.map { prefs ->
       prefs[keyLanguageCode]
         ?: try {
           context.getSharedPreferences("omnichurch_prefs", Context.MODE_PRIVATE)
@@ -202,6 +232,39 @@ class OmniPreferencesManager(private val context: Context) {
     } catch (_: Exception) {}
   }
 
+  suspend fun saveRememberedAdminCredentials(
+    remember: Boolean,
+    email: String,
+    password: String,
+  ) {
+    val cleanEmail = email.trim().lowercase(Locale.US)
+    context.omniSessionDataStore.edit { prefs ->
+      prefs[keyRememberAdminEnabled] = remember
+      if (remember && cleanEmail.isNotEmpty()) {
+        prefs[keyRememberedAdminEmail] = cleanEmail
+        val encrypted = CryptoSecurity.encryptLocalSecret(password)
+        if (encrypted.isNotEmpty()) {
+          prefs[keyRememberedAdminSecret] = encrypted
+        } else {
+          prefs.remove(keyRememberedAdminSecret)
+        }
+      } else {
+        prefs.remove(keyRememberedAdminEmail)
+        prefs.remove(keyRememberedAdminSecret)
+      }
+    }
+  }
+
+  suspend fun setRememberAdminEnabled(enabled: Boolean) {
+    context.omniSessionDataStore.edit { prefs ->
+      prefs[keyRememberAdminEnabled] = enabled
+      if (!enabled) {
+        prefs.remove(keyRememberedAdminEmail)
+        prefs.remove(keyRememberedAdminSecret)
+      }
+    }
+  }
+
   private fun sanitizeKeySegment(raw: String): String =
     raw.trim().lowercase().replace(Regex("[^a-z0-9_-]"), "_")
 
@@ -211,7 +274,7 @@ class OmniPreferencesManager(private val context: Context) {
       stringSetPreferencesKey(
         "seen_notif_keys_${sanitizeKeySegment(churchId)}_${sanitizeKeySegment(memberKey)}"
       )
-    val prefs = context.omniSessionDataStore.data.first()
+    val prefs = safePreferencesFlow.first()
     return prefs[prefKey] ?: emptySet()
   }
 
@@ -237,7 +300,7 @@ class OmniPreferencesManager(private val context: Context) {
       booleanPreferencesKey(
         "feed_baseline_seeded_${sanitizeKeySegment(churchId)}_${sanitizeKeySegment(memberKey)}"
       )
-    val prefs = context.omniSessionDataStore.data.first()
+    val prefs = safePreferencesFlow.first()
     return prefs[prefKey] == true
   }
 
@@ -258,7 +321,7 @@ class OmniPreferencesManager(private val context: Context) {
       stringSetPreferencesKey(
         "read_announcement_ids_${sanitizeKeySegment(churchId)}_${sanitizeKeySegment(memberKey)}"
       )
-    return context.omniSessionDataStore.data.map { prefs -> prefs[prefKey] ?: emptySet() }
+    return safePreferencesFlow.map { prefs -> prefs[prefKey] ?: emptySet() }
   }
 
   suspend fun markAnnouncementRead(
@@ -266,14 +329,24 @@ class OmniPreferencesManager(private val context: Context) {
     memberKey: String,
     announcementId: String,
   ) {
-    if (churchId.isBlank() || memberKey.isBlank() || announcementId.isBlank()) return
+    markAnnouncementsRead(churchId, memberKey, listOf(announcementId))
+  }
+
+  suspend fun markAnnouncementsRead(
+    churchId: String,
+    memberKey: String,
+    announcementIds: Collection<String>,
+  ) {
+    val cleanIds = announcementIds.map { it.trim() }.filter { it.isNotEmpty() }
+    if (churchId.isBlank() || memberKey.isBlank() || cleanIds.isEmpty()) return
     val prefKey =
       stringSetPreferencesKey(
         "read_announcement_ids_${sanitizeKeySegment(churchId)}_${sanitizeKeySegment(memberKey)}"
       )
     context.omniSessionDataStore.edit { prefs ->
       val existing = prefs[prefKey] ?: emptySet()
-      prefs[prefKey] = (existing + announcementId.trim()).toList().takeLast(500).toSet()
+      val merged = (existing + cleanIds).toList()
+      prefs[prefKey] = merged.takeLast(1000).toSet()
     }
   }
 }

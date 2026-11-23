@@ -67,7 +67,7 @@ data class Church(
   val adminGooglePhoto: String? = null,
   val adminAuthMethod: String? = null,
   @JvmField @field:PropertyName("quickPinEnabled") val quickPinEnabled: Boolean = false,
-  val autoLockMinutes: Int = 5,
+  val autoLockMinutes: Int = 0,
   val adminPasscodeUpdatedAt: String? = null,
   val rnc: String = "",
   val rncVerified: Boolean = false,
@@ -84,7 +84,7 @@ data class Church(
     get() = ownerId.isNotBlank() || adminGoogleEmail.isNotBlank() || adminGoogleUid?.isNotBlank() == true
 
   val effectiveAutoLockMinutes: Int
-    get() = if (autoLockMinutes <= 0) 5 else autoLockMinutes
+    get() = autoLockMinutes.coerceIn(0, 120)
 
   val effectiveQuickPinEnabled: Boolean
     get() = quickPinEnabled && adminPasscode.isNotBlank()
@@ -287,7 +287,12 @@ data class ChurchService(
   val startTimeEpochMillis: Long = 0L,
   val lateToleranceMinutes: Long = 15L,
   @JvmField @field:PropertyName("isOpenForAttendance") val isOpenForAttendance: Boolean = false,
+  @JvmField @field:PropertyName("wasOpenedForAttendance") val wasOpenedForAttendance: Boolean = false,
+  @JvmField @field:PropertyName("isPermanentlyEnded") val isPermanentlyEnded: Boolean = false,
   @JvmField @field:PropertyName("isLive") val isLive: Boolean = false,
+  val endedAt: String? = null,
+  val reminderSentAt: String? = null,
+  val notes: String? = null,
   val authorId: String = "",
   val authorName: String = "",
   val reactionsCount: Long = 0L,
@@ -304,16 +309,17 @@ data class ChurchService(
   val effectiveImageUrl: String?
     get() = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
 
-  fun isPermanentlyLocked(now: Long = System.currentTimeMillis()): Boolean = status.equals("locked", ignoreCase = true) || status.equals("archived", ignoreCase = true)
+  fun isPermanentlyLocked(now: Long = System.currentTimeMillis()): Boolean =
+    isPermanentlyEnded || status.equals("locked", ignoreCase = true) || status.equals("archived", ignoreCase = true)
 
-  fun isLiveBadgeActive(now: Long = System.currentTimeMillis()): Boolean = isLive || status.equals("live", ignoreCase = true)
+  fun isLiveBadgeActive(now: Long = System.currentTimeMillis()): Boolean = !isPermanentlyEnded && (isLive || status.equals("live", ignoreCase = true))
 
-  fun isTimerTicking(now: Long = System.currentTimeMillis()): Boolean = isLive || isOpenForAttendance
+  fun isTimerTicking(now: Long = System.currentTimeMillis()): Boolean = !isPermanentlyEnded && (isLive || isOpenForAttendance)
 
   fun isBeforeStart(now: Long = System.currentTimeMillis()): Boolean = startTimeEpochMillis > 0L && now < startTimeEpochMillis
 
   fun isServiceEnded(nowMillis: Long = System.currentTimeMillis()): Boolean {
-    if (status.equals("ended", ignoreCase = true) || status.equals("closed", ignoreCase = true)) {
+    if (isPermanentlyEnded || status.equals("ended", ignoreCase = true) || status.equals("closed", ignoreCase = true)) {
       return true
     }
     return startTimeEpochMillis > 0L && nowMillis > (startTimeEpochMillis + 4 * 3_600_000L)
@@ -330,6 +336,150 @@ data class ChurchService(
   val effectiveScheduleLabel: String
     get() = "$dateFormatted • $startTime".trim(' ', '•')
   fun effectiveScheduleLabel(now: Long = System.currentTimeMillis()): String = effectiveScheduleLabel
+
+  fun formattedScheduleWithDay(languageCode: String = "ht"): String {
+    val cal = resolveScheduleCalendar()
+    val datePart =
+      if (cal != null) {
+        val dayName = localizedDayOfWeekName(cal.get(java.util.Calendar.DAY_OF_WEEK), languageCode)
+        val day = cal.get(java.util.Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
+        val month = (cal.get(java.util.Calendar.MONTH) + 1).toString().padStart(2, '0')
+        val year = cal.get(java.util.Calendar.YEAR).toString().padStart(4, '0')
+        "$dayName: $day:$month:$year"
+      } else {
+        dateFormatted.ifBlank { date }.trim()
+      }
+
+    val startFormatted = formatScheduleClock(startTime)
+    val endFormatted = formatScheduleClock(endTime)
+    val timePart =
+      when {
+        startFormatted.isNotBlank() && endFormatted.isNotBlank() && !endFormatted.equals(startFormatted, ignoreCase = true) ->
+          "$startFormatted - $endFormatted"
+        startFormatted.isNotBlank() -> startFormatted
+        startTimeEpochMillis > 0L ->
+          java.text.SimpleDateFormat("hh:mm a", java.util.Locale.US).format(java.util.Date(startTimeEpochMillis))
+        else -> ""
+      }
+
+    return when {
+      datePart.isNotBlank() && timePart.isNotBlank() -> "$datePart • $timePart"
+      datePart.isNotBlank() -> datePart
+      timePart.isNotBlank() -> timePart
+      else -> effectiveScheduleLabel
+    }
+  }
+
+  private fun resolveScheduleCalendar(): java.util.Calendar? {
+    val candidates =
+      listOf(
+        date.trim(),
+        dateFormatted.substringBefore("•").trim(),
+        dateFormatted.trim(),
+      ).filter { it.isNotBlank() }.distinct()
+
+    val patterns =
+      listOf(
+        "yyyy-MM-dd",
+        "dd/MM/yyyy",
+        "dd-MM-yyyy",
+        "dd:MM:yyyy",
+        "yyyy/MM/dd",
+        "dd MMM yyyy",
+        "MMM dd, yyyy",
+        "d MMM yyyy",
+      )
+
+    for (raw in candidates) {
+      val cleaned = raw.substringAfter(":", raw).trim().ifBlank { raw }
+      val inputsToTry = listOf(raw, cleaned).distinct()
+      for (input in inputsToTry) {
+        for (pattern in patterns) {
+          for (locale in listOf(java.util.Locale.US, java.util.Locale.FRENCH, java.util.Locale.getDefault())) {
+            try {
+              val sdf = java.text.SimpleDateFormat(pattern, locale).apply { isLenient = false }
+              val parsed = sdf.parse(input)
+              if (parsed != null) {
+                return java.util.Calendar.getInstance().apply { time = parsed }
+              }
+            } catch (_: Exception) {
+              // Try next pattern
+            }
+          }
+        }
+      }
+    }
+
+    if (startTimeEpochMillis > 0L) {
+      return java.util.Calendar.getInstance().apply { timeInMillis = startTimeEpochMillis }
+    }
+    return null
+  }
+
+  private fun localizedDayOfWeekName(dayOfWeek: Int, languageCode: String): String {
+    val lang = languageCode.trim().lowercase()
+    return when (lang) {
+      "fr" -> when (dayOfWeek) {
+        java.util.Calendar.SUNDAY -> "Dimanche"
+        java.util.Calendar.MONDAY -> "Lundi"
+        java.util.Calendar.TUESDAY -> "Mardi"
+        java.util.Calendar.WEDNESDAY -> "Mercredi"
+        java.util.Calendar.THURSDAY -> "Jeudi"
+        java.util.Calendar.FRIDAY -> "Vendredi"
+        java.util.Calendar.SATURDAY -> "Samedi"
+        else -> ""
+      }
+      "en" -> when (dayOfWeek) {
+        java.util.Calendar.SUNDAY -> "Sunday"
+        java.util.Calendar.MONDAY -> "Monday"
+        java.util.Calendar.TUESDAY -> "Tuesday"
+        java.util.Calendar.WEDNESDAY -> "Wednesday"
+        java.util.Calendar.THURSDAY -> "Thursday"
+        java.util.Calendar.FRIDAY -> "Friday"
+        java.util.Calendar.SATURDAY -> "Saturday"
+        else -> ""
+      }
+      "es" -> when (dayOfWeek) {
+        java.util.Calendar.SUNDAY -> "Domingo"
+        java.util.Calendar.MONDAY -> "Lunes"
+        java.util.Calendar.TUESDAY -> "Martes"
+        java.util.Calendar.WEDNESDAY -> "Miércoles"
+        java.util.Calendar.THURSDAY -> "Jueves"
+        java.util.Calendar.FRIDAY -> "Viernes"
+        java.util.Calendar.SATURDAY -> "Sábado"
+        else -> ""
+      }
+      else -> when (dayOfWeek) {
+        java.util.Calendar.SUNDAY -> "Dimanch"
+        java.util.Calendar.MONDAY -> "Lendi"
+        java.util.Calendar.TUESDAY -> "Madi"
+        java.util.Calendar.WEDNESDAY -> "Mèkredi"
+        java.util.Calendar.THURSDAY -> "Jedi"
+        java.util.Calendar.FRIDAY -> "Vandredi"
+        java.util.Calendar.SATURDAY -> "Samdi"
+        else -> ""
+      }
+    }
+  }
+
+  private fun formatScheduleClock(rawTime: String): String {
+    val trimmed = rawTime.trim()
+    if (trimmed.isBlank()) return ""
+    if (trimmed.contains("AM", ignoreCase = true) || trimmed.contains("PM", ignoreCase = true)) {
+      return trimmed.uppercase(java.util.Locale.US)
+    }
+    val match = Regex("^(\\d{1,2}):(\\d{2})(?::\\d{2})?$").matchEntire(trimmed) ?: return trimmed
+    val hour24 = match.groupValues[1].toIntOrNull() ?: return trimmed
+    val minute = match.groupValues[2].toIntOrNull() ?: return trimmed
+    if (hour24 !in 0..23 || minute !in 0..59) return trimmed
+    val amPm = if (hour24 >= 12) "PM" else "AM"
+    val hour12 = when {
+      hour24 == 0 -> 12
+      hour24 > 12 -> hour24 - 12
+      else -> hour24
+    }
+    return "${hour12.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} $amPm"
+  }
 
   val categoryLabelHt: String
     get() = when (category.trim().lowercase()) {
@@ -351,17 +501,31 @@ data class Announcement(
   val category: String = "anons",
   val department: String = "",
   val date: String? = null,
+  val time: String? = null,
   val targetAudience: String = "Tout moun",
+  val priority: String = "normal",
+  val expiresAt: String? = null,
   @JvmField @field:PropertyName("isPinned") val isPinned: Boolean = false,
+  @JvmField @field:PropertyName("isPublished") val isPublished: Boolean = true,
   @JvmField @field:PropertyName("showToastOnLogin") val showToastOnLogin: Boolean = false,
   val toastAlertLevel: String = "info",
   @JvmField @field:PropertyName("isScheduledNotification") val isScheduledNotification: Boolean = false,
   val scheduledNotificationDate: String? = null,
   val posterUrl: String? = null,
   val imageUrl: String? = null,
+  val imageCaption: String? = null,
   val serviceId: String? = null,
   val authorId: String = "",
   val authorName: String = "",
+  val authorPhotoUrl: String? = null,
+  val titleHt: String? = null,
+  val titleFr: String? = null,
+  val titleEn: String? = null,
+  val titleEs: String? = null,
+  val contentHt: String? = null,
+  val contentFr: String? = null,
+  val contentEn: String? = null,
+  val contentEs: String? = null,
   val reactionsCount: Long = 0L,
   val commentsCount: Long = 0L,
   @ServerTimestamp val createdAt: Timestamp? = null,
@@ -370,6 +534,31 @@ data class Announcement(
   val effectiveImageUrl: String?
     get() = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
         ?: posterUrl?.trim()?.takeIf { it.isNotEmpty() }
+
+  fun localizedTitle(languageCode: String): String {
+    val localized =
+      when (languageCode.trim().lowercase()) {
+        "fr" -> titleFr
+        "en" -> titleEn
+        "es" -> titleEs
+        else -> titleHt
+      }?.trim()
+    return localized?.takeIf { it.isNotEmpty() } ?: title.trim()
+  }
+
+  fun localizedContent(languageCode: String): String {
+    val localized =
+      when (languageCode.trim().lowercase()) {
+        "fr" -> contentFr
+        "en" -> contentEn
+        "es" -> contentEs
+        else -> contentHt
+      }?.trim()
+    return localized?.takeIf { it.isNotEmpty() } ?: content.trim()
+  }
+
+  val sortTimestampMillis: Long
+    get() = createdAt?.toDate()?.time ?: updatedAt?.toDate()?.time ?: 0L
 }
 
 @IgnoreExtraProperties
@@ -442,6 +631,10 @@ data class AttendanceRecord(
   val status: String = "on_time",
   val checkInMethod: String = "qr_scanner",
   val barcodeToken: String = "",
+  val attendanceRole: String = "member",
+  @JvmField @field:PropertyName("isVisitor") val isVisitor: Boolean = false,
+  val homeChurchId: String? = null,
+  val homeChurchName: String? = null,
   val timestamp: Long = System.currentTimeMillis(),
   @ServerTimestamp val createdAt: Timestamp? = null,
 ) {
@@ -449,19 +642,18 @@ data class AttendanceRecord(
     get() = status.trim().ifEmpty { "on_time" }
 
   val isCrossChurchVisitor: Boolean
-    get() = false
+    get() =
+      isVisitor ||
+        attendanceRole.equals("visitor", ignoreCase = true) ||
+        (!homeChurchId.isNullOrBlank() &&
+          churchId.isNotBlank() &&
+          !homeChurchId.trim().equals(churchId.trim(), ignoreCase = true))
 
   val effectiveMemberDbId: String
     get() = memberDocId.trim().ifEmpty { memberId.trim().ifEmpty { id } }
 
   val effectiveMemberCode: String
     get() = memberCode.trim().ifEmpty { memberId }
-
-  val homeChurchName: String?
-    get() = null
-
-  val homeChurchId: String?
-    get() = null
 }
 
 @IgnoreExtraProperties
@@ -917,24 +1109,6 @@ data class CrossChurchVisitItem(
   val serviceTitle: String = "",
   val churchId: String = "",
 )
-
-val AttendanceRecord.effectiveStatus: String
-  get() = status.trim().ifEmpty { "on_time" }
-
-val AttendanceRecord.isCrossChurchVisitor: Boolean
-  get() = false
-
-val AttendanceRecord.effectiveMemberDbId: String
-  get() = memberDocId.trim().ifEmpty { memberId.trim().ifEmpty { id } }
-
-val AttendanceRecord.effectiveMemberCode: String
-  get() = memberCode.trim().ifEmpty { memberId }
-
-val AttendanceRecord.homeChurchName: String?
-  get() = null
-
-val AttendanceRecord.homeChurchId: String?
-  get() = null
 
 fun ChurchService.isFinishedForAbsence(): Boolean {
   return isPermanentlyLocked() || System.currentTimeMillis() > (startTimeEpochMillis + 3_600_000L * 3)

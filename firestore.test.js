@@ -623,4 +623,311 @@ test("12. Member 3-field photo update and safe Google unlink (clearing googleUid
   );
 });
 
+test("13. Passcode/PIN Admin (unauthenticated) & Auth Admin can create, update, notify, and delete full Kotlin ServiceRepository payloads; invalid/outsider payloads fail", async () => {
+  await seedBaseTenantData();
+  const now = new Date();
+  const pinAdminDb = testEnv.unauthenticatedContext().firestore();
+  const authAdminDb = testEnv.authenticatedContext(ADMIN_UID).firestore();
+  const outsiderDb = testEnv.authenticatedContext(OUTSIDER_UID).firestore();
+
+  const fullServicePayload = {
+    churchId: CHURCH_A,
+    churchName: "OmniChurch Pro Tabernacle",
+    category: "dimanche_matin",
+    title: "Sèvis Dimanch Maten",
+    name: "Sèvis Dimanch Maten",
+    description: "Adorasyon ak pawòl Bondye",
+    dateFormatted: "2026-11-22 • 09:00",
+    date: "2026-11-22",
+    startTime: "09:00",
+    endTime: "11:30",
+    theme: "Lagras Bondye",
+    passage: "Jan 3:16",
+    leader: "Frè Jean",
+    preacher: "Pastè Pierre",
+    reader: "Sè Marie",
+    musicians: "Gwoup Adorasyon",
+    ushers: "Ekip Akèy",
+    sendReminder24h: true,
+    imageUrl: "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+    type: "dimanche_matin",
+    status: "active",
+    startTimeEpochMillis: 1795356000000,
+    lateToleranceMinutes: 15,
+    isOpenForAttendance: true,
+    isLive: true,
+    authorId: "matrikil_pin_session",
+    authorName: "Admin",
+    reactionsCount: 0,
+    commentsCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  // Unauthenticated Passcode/PIN Admin create + update + broadcast notification + delete
+  await assertSucceeds(
+    pinAdminDb.collection("services").doc("GC6bXRteBCdHmkwOkNdl").set(fullServicePayload)
+  );
+  await assertSucceeds(
+    pinAdminDb.collection("services").doc("GC6bXRteBCdHmkwOkNdl").update({
+      title: "Sèvis Dimanch Maten (Mizajou)",
+      name: "Sèvis Dimanch Maten (Mizajou)",
+      description: null,
+      dateFormatted: "2026-11-22 • 09:30",
+      date: "2026-11-22",
+      startTime: "09:30",
+      endTime: "12:00",
+      theme: "Fwa ak Espwa",
+      passage: "Ebre 11:1",
+      leader: "Frè Jean",
+      preacher: "Pastè Pierre",
+      reader: null,
+      musicians: "Gwoup Adorasyon",
+      ushers: "Ekip Akèy",
+      category: "dimanche_matin",
+      type: "dimanche_matin",
+      lateToleranceMinutes: 20,
+      isOpenForAttendance: false,
+      isLive: false,
+      sendReminder24h: false,
+      imageUrl: "data:image/jpeg;base64,/9j/UPDATED==",
+      updatedAt: now,
+    })
+  );
+  await assertSucceeds(
+    pinAdminDb.collection("notifications").doc("notif_srv_01").set({
+      userId: "all",
+      churchId: CHURCH_A,
+      title: "Nouvo Sèvis Pibliye",
+      message: "Sèvis Dimanch Maten • 2026-11-22 • 09:00",
+      type: "service",
+      isRead: false,
+      createdAt: now,
+    })
+  );
+  await assertSucceeds(
+    pinAdminDb.collection("services").doc("GC6bXRteBCdHmkwOkNdl").delete()
+  );
+
+  // Authenticated Admin create succeeds
+  await assertSucceeds(
+    authAdminDb.collection("services").doc("srv_auth_admin_01").set({
+      ...fullServicePayload,
+      authorId: ADMIN_UID,
+    })
+  );
+
+  // Negative cases: non-existent churchId, extra ghost key, cross-tenant outsider
+  await assertFails(
+    pinAdminDb.collection("services").doc("srv_bad_church").set({
+      ...fullServicePayload,
+      churchId: "nonexistent_church_xyz",
+    })
+  );
+  await assertFails(
+    pinAdminDb.collection("services").doc("srv_ghost_key").set({
+      ...fullServicePayload,
+      unexpectedExtraField: true,
+    })
+  );
+  await assertFails(
+    outsiderDb.collection("services").doc("srv_outsider_inject").set({
+      ...fullServicePayload,
+      authorId: OUTSIDER_UID,
+    })
+  );
+});
+
+test("14. Passcode/PIN Admin (unauthenticated) & Auth Admin can create/update/delete full Kotlin AnnouncementRepository payloads, react, and comment; unauthorized keys fail", async () => {
+  await seedBaseTenantData();
+  const now = new Date();
+  const pinAdminDb = testEnv.unauthenticatedContext().firestore();
+  const authAdminDb = testEnv.authenticatedContext(ADMIN_UID).firestore();
+  const outsiderDb = testEnv.authenticatedContext(OUTSIDER_UID).firestore();
+
+  const fullAnnouncementPayload = {
+    churchId: CHURCH_A,
+    title: "Reyinyon Jèn yo",
+    content: "Tout jèn yo envite samdi a a 4è nan apremidi.",
+    department: "Depatman Jenès",
+    isPinned: true,
+    authorName: "Admin",
+    authorId: "matrikil_pin_session",
+    category: "anons",
+    date: "2026-11-28",
+    targetAudience: "Tout moun",
+    showToastOnLogin: true,
+    toastAlertLevel: "warning",
+    isScheduledNotification: false,
+    posterUrl: "data:image/jpeg;base64,/9j/POSTER==",
+    imageUrl: "data:image/jpeg;base64,/9j/POSTER==",
+    serviceId: "srv_sunday",
+    reactionsCount: 0,
+    commentsCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  // Passcode/PIN Admin create + update + broadcast notification + reaction + comment + delete
+  await assertSucceeds(
+    pinAdminDb.collection("announcements").doc("ann_pin_01").set(fullAnnouncementPayload)
+  );
+  await assertSucceeds(
+    pinAdminDb.collection("announcements").doc("ann_pin_01").update({
+      title: "Reyinyon Jèn yo (Chanjman Lè)",
+      content: "Nouvo lè: 5è nan apremidi.",
+      department: "Depatman Jenès",
+      category: "anons",
+      date: "2026-11-28",
+      targetAudience: "Jèn yo",
+      isPinned: false,
+      showToastOnLogin: false,
+      toastAlertLevel: "info",
+      isScheduledNotification: false,
+      scheduledNotificationDate: null,
+      posterUrl: null,
+      imageUrl: null,
+      serviceId: null,
+      updatedAt: now,
+    })
+  );
+  await assertSucceeds(
+    pinAdminDb.collection("notifications").doc("notif_ann_01").set({
+      userId: "all",
+      churchId: CHURCH_A,
+      title: "Nouvo Anons: Reyinyon Jèn yo",
+      message: "Tout jèn yo envite samdi a a 4è nan apremidi.",
+      type: "announcement",
+      isRead: false,
+      createdAt: now,
+    })
+  );
+  await assertSucceeds(
+    pinAdminDb.collection("announcement_reactions").doc("ann_pin_01_matrikil_pin_session").set({
+      targetId: "ann_pin_01",
+      churchId: CHURCH_A,
+      userId: "matrikil_pin_session",
+      userName: "Admin",
+      reactionType: "pray",
+      createdAt: now,
+    })
+  );
+  await assertSucceeds(
+    pinAdminDb.collection("announcement_comments").doc("cmt_pin_01").set({
+      targetId: "ann_pin_01",
+      churchId: CHURCH_A,
+      userId: "matrikil_pin_session",
+      userName: "Admin",
+      content: "Mèsi tout moun!",
+      createdAt: now,
+    })
+  );
+  await assertSucceeds(
+    pinAdminDb.collection("announcements").doc("ann_pin_01").delete()
+  );
+
+  // Authenticated Admin create succeeds
+  await assertSucceeds(
+    authAdminDb.collection("announcements").doc("ann_auth_01").set({
+      ...fullAnnouncementPayload,
+      authorId: ADMIN_UID,
+    })
+  );
+
+  // Negative cases: missing reactionsCount, unauthorized key on reaction, cross-tenant outsider
+  const { reactionsCount, ...missingCountPayload } = fullAnnouncementPayload;
+  await assertFails(
+    pinAdminDb.collection("announcements").doc("ann_missing_count").set(missingCountPayload)
+  );
+  await assertFails(
+    pinAdminDb.collection("announcement_reactions").doc("ann_bad_react").set({
+      targetId: "ann_auth_01",
+      churchId: CHURCH_A,
+      userId: "matrikil_pin_session",
+      userName: "Admin",
+      reactionType: "pray",
+      isServiceTarget: false,
+      createdAt: now,
+    })
+  );
+  await assertFails(
+    outsiderDb.collection("announcements").doc("ann_outsider").set({
+      ...fullAnnouncementPayload,
+      authorId: OUTSIDER_UID,
+    })
+  );
+});
+
+test("15. Tenant-scoped members list query (where churchId == activeChurchId) succeeds for PIN Admin, Auth Admin, Church Owner (even with role='member'), and Church Member; unfiltered/cross-tenant member list fails for non-staff", async () => {
+  await seedBaseTenantData();
+  const now = new Date();
+  const OWNER_MEMBER_ROLE_UID = "owner_with_member_profile_06";
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.collection("churches").doc(CHURCH_A).update({
+      adminGoogleUid: OWNER_MEMBER_ROLE_UID,
+      adminGoogleEmail: "owner.memberrole@omnichurch.org",
+    });
+    await db.collection("users").doc(OWNER_MEMBER_ROLE_UID).set({
+      userId: OWNER_MEMBER_ROLE_UID,
+      email: "owner.memberrole@omnichurch.org",
+      displayName: "Pasteur Owner",
+      churchId: null,
+      role: "member",
+      createdAt: now,
+    });
+  });
+
+  const pinAdminDb = testEnv.unauthenticatedContext().firestore();
+  const authAdminDb = testEnv.authenticatedContext(ADMIN_UID).firestore();
+  const ownerWithMemberRoleDb = testEnv
+    .authenticatedContext(OWNER_MEMBER_ROLE_UID, { email: "owner.memberrole@omnichurch.org" })
+    .firestore();
+  const memberDb = testEnv.authenticatedContext(MEMBER_UID).firestore();
+
+  // Tenant-scoped queries succeed for all legitimate church actors
+  await assertSucceeds(
+    pinAdminDb.collection("members").where("churchId", "==", CHURCH_A).get()
+  );
+  await assertSucceeds(
+    authAdminDb.collection("members").where("churchId", "==", CHURCH_A).get()
+  );
+  await assertSucceeds(
+    ownerWithMemberRoleDb.collection("members").where("churchId", "==", CHURCH_A).get()
+  );
+  await assertSucceeds(
+    memberDb.collection("members").where("churchId", "==", CHURCH_A).get()
+  );
+
+  // Unfiltered full-collection query (the old mobile bug!) FAILS for member/owner-with-member-role
+  await assertFails(ownerWithMemberRoleDb.collection("members").get());
+  await assertFails(memberDb.collection("members").get());
+
+  // Cross-tenant query FAILS for member of Church A
+  await assertFails(
+    memberDb.collection("members").where("churchId", "==", CHURCH_B).get()
+  );
+});
+
+test("16. Churches selector query (list and get on /churches) succeeds for unauthenticated, no-profile auth user, member, and admin", async () => {
+  await seedBaseTenantData();
+
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+  const noProfileDb = testEnv.authenticatedContext("fresh_google_uid_99", { email: "fresh@omnichurch.org" }).firestore();
+  const memberDb = testEnv.authenticatedContext(MEMBER_UID).firestore();
+  const adminDb = testEnv.authenticatedContext(ADMIN_UID).firestore();
+
+  const unauthSnap = await assertSucceeds(unauthDb.collection("churches").get());
+  if (unauthSnap.size < 2) {
+    throw new Error(`Expected >= 2 churches for unauth selector, got ${unauthSnap.size}`);
+  }
+  await assertSucceeds(unauthDb.collection("churches").doc(CHURCH_A).get());
+  await assertSucceeds(noProfileDb.collection("churches").get());
+  await assertSucceeds(memberDb.collection("churches").get());
+  await assertSucceeds(adminDb.collection("churches").get());
+});
+
+
+
 

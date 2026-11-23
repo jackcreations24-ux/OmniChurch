@@ -118,6 +118,20 @@
     <string name="scanner_camera_permission_msg">OmniChurch bezwen aksè kamera pou eskane Kòd QR manm yo an tan reyèl.</string>
     <string name="scanner_grant_permission">Otorize Kamera</string>
     <string name="scanner_torch_toggle">Flach</string>
+    <string name="scanner_purpose_attendance">Prezans</string>
+    <string name="scanner_purpose_verify">Verifye Kat</string>
+    <string name="scanner_purpose_verify_short">Verifye</string>
+    <string name="scanner_screen_title_compact">Lektè QR</string>
+    <string name="scanner_inline_code_placeholder">Kòd manm oswa Matrikil (egz: OM-0258)</string>
+    <string name="scanner_inline_verify_placeholder">Matrikil, kòd QR, oswa lyen verifikasyon</string>
+    <string name="scanner_auto_service_none">Okenn sèvis aktif pou prezans kounye a</string>
+    <string name="scanner_open_services_short">Sèvis</string>
+    <string name="scanner_verify_banner_title">Mòd Verifikasyon Ofisyèl</string>
+    <string name="scanner_verify_banner_subtitle">Verifikasyon ofisyèl • San anrejistre prezans</string>
+    <string name="scanner_verify_manual_label">Antre Matrikil, Kòd QR, oswa Lyen Verifikasyon</string>
+    <string name="scanner_verify_manual_submit">Verifye Kat Manm</string>
+    <string name="scanner_verify_certificate_btn">Verifye Sètifika Kat la</string>
+    <string name="qr_gallery_verify_card">Verifye Kat</string>
 
     <!-- Attendance Validation Results -->
     <string name="attendance_registered_title">Prezans Anrejistre</string>

@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +67,8 @@ import com.zoutiw.omnichurch.data.models.Church
 import com.zoutiw.omnichurch.presentation.components.GlassButton
 import com.zoutiw.omnichurch.presentation.components.GlassDialog
 import com.zoutiw.omnichurch.presentation.components.GlassInputField
+import com.zoutiw.omnichurch.presentation.components.LogoVariant
+import com.zoutiw.omnichurch.presentation.components.OmniChurchLogo
 import com.zoutiw.omnichurch.presentation.components.Premium3DGoogleIconButton
 import com.zoutiw.omnichurch.presentation.components.PremiumGlassCard
 import com.zoutiw.omnichurch.ui.theme.BlueNeon
@@ -106,8 +109,10 @@ fun AdminAuthGateFormContent(
   onCompleteLegacyMigration: (email: String, newPass: String, confirmPass: String) -> Unit,
   onResetLegacyMigration: () -> Unit,
   onLocalError: (String) -> Unit,
+  currentLanguageCode: String = "ht",
   modifier: Modifier = Modifier,
 ) {
+  val lang = currentLanguageCode.lowercase()
   val rawContext = LocalContext.current
   val context = remember(rawContext) { rawContext.findActivity() ?: rawContext }
   val scope = rememberCoroutineScope()
@@ -323,7 +328,13 @@ fun AdminAuthGateFormContent(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = "Pwopriyetè konekte: $ownerEmailLabel",
+              text =
+                when (lang) {
+                  "fr" -> "Session active : $ownerEmailLabel"
+                  "en" -> "Active session: $ownerEmailLabel"
+                  "es" -> "Sesión activa: $ownerEmailLabel"
+                  else -> "Sesyon aktif : $ownerEmailLabel"
+                },
               style = MaterialTheme.typography.labelMedium,
               color = PureWhite,
             )
@@ -338,7 +349,13 @@ fun AdminAuthGateFormContent(
             }
             onClearMessages()
           },
-          label = "PIN Rapid Administratè (4–6 chif)",
+          label =
+            when (lang) {
+              "fr" -> "Code PIN de reprise rapide (4–6 chiffres)"
+              "en" -> "Quick Resume PIN (4–6 digits)"
+              "es" -> "PIN de reanudación rápida (4–6 dígitos)"
+              else -> "PIN Reprann Aktivite Rapid (4–6 chif)"
+            },
           placeholder = "••••",
           leadingIcon = Icons.Default.Pin,
           visualTransformation = PasswordVisualTransformation(),
@@ -350,7 +367,13 @@ fun AdminAuthGateFormContent(
           CircularProgressIndicator(color = BlueNeon, modifier = Modifier.size(36.dp))
         } else {
           GlassButton(
-            text = "Debloke ak PIN Rapid",
+            text =
+              when (lang) {
+                "fr" -> "Reprendre l'activité avec le PIN"
+                "en" -> "Resume Activity with PIN"
+                "es" -> "Reanudar actividad con PIN"
+                else -> "Reprann Aktivite ak PIN"
+              },
             icon = Icons.Default.LockClock,
             isPrimaryNeon = true,
             onClick = { onQuickPinSubmit(quickPinInput) },
@@ -360,16 +383,34 @@ fun AdminAuthGateFormContent(
 
           if (BiometricQuickUnlockHelper.isBiometricAvailable(context)) {
             GlassButton(
-              text = "Debloke ak Anprent / Face ID",
+              text =
+                when (lang) {
+                  "fr" -> "Reprendre par empreinte / Face ID"
+                  "en" -> "Resume with Fingerprint / Face ID"
+                  "es" -> "Reanudar con huella / Face ID"
+                  else -> "Reprann ak Anprent / Face ID"
+                },
               icon = Icons.Default.Fingerprint,
               isPrimaryNeon = false,
               accentColor = SuccessGreen,
               onClick = {
                 BiometricQuickUnlockHelper.promptBiometricUnlock(
                   context = context,
-                  title = "Deblokaj Administratè OmniChurch",
-                  subtitle = "Konfime idantite w pou louvri ${church?.name.orEmpty()}",
-                  cancelText = "Anile",
+                  title =
+                    when (lang) {
+                      "fr" -> "Reprise Administrateur OmniChurch"
+                      "en" -> "OmniChurch Admin Resume"
+                      "es" -> "Reanudación Admin OmniChurch"
+                      else -> "Reprann Sesyon Admin OmniChurch"
+                    },
+                  subtitle = church?.name.orEmpty(),
+                  cancelText =
+                    when (lang) {
+                      "fr" -> "Annuler"
+                      "en" -> "Cancel"
+                      "es" -> "Cancelar"
+                      else -> "Anile"
+                    },
                   onSuccess = onBiometricSuccess,
                   onError = { err -> onLocalError(err) },
                 )
@@ -381,16 +422,23 @@ fun AdminAuthGateFormContent(
         }
 
         Text(
-          text = "Itilize Imèl & Modpas pito",
+          text =
+            when (lang) {
+              "fr" -> "Utiliser l'e-mail et le mot de passe"
+              "en" -> "Use Email & Password instead"
+              "es" -> "Usar correo y contraseña"
+              else -> "Itilize Imèl & Modpas pito"
+            },
           style = MaterialTheme.typography.labelMedium,
           color = BlueNeon,
           fontWeight = FontWeight.SemiBold,
           modifier =
-            Modifier.clickable {
-              forceEmailPasswordMode = true
-              onClearMessages()
-            }
-              .padding(6.dp)
+            Modifier.minimumInteractiveComponentSize()
+              .clickable {
+                forceEmailPasswordMode = true
+                onClearMessages()
+              }
+              .padding(horizontal = 8.dp, vertical = 10.dp)
               .testTag("switch_to_email_password_button"),
         )
       }
@@ -519,9 +567,16 @@ fun BlockingAdminAuthGateOverlay(
   onResetLegacyMigration: () -> Unit,
   onLocalError: (String) -> Unit,
   onExitToAuthPortal: () -> Unit,
+  currentLanguageCode: String = "ht",
 ) {
+  val lang = currentLanguageCode.lowercase()
+  val isQuickResumeReady =
+    remember(church, firebaseUser) {
+      SessionLockManager.canQuickPinUnlock(church, firebaseUser)
+    }
+
   BackHandler(enabled = true) {
-    onExitToAuthPortal()
+    // Prevent hardware back bypass while session is paused/locked.
   }
 
   Box(
@@ -545,14 +600,28 @@ fun BlockingAdminAuthGateOverlay(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
-        Icon(
-          imageVector = Icons.Default.Shield,
-          contentDescription = "Espas Admin Verouye",
-          tint = BrandGold,
+        OmniChurchLogo(
+          variant = LogoVariant.Icon,
           modifier = Modifier.size(46.dp),
+          contentDescription = "OmniChurch PRO",
         )
         Text(
-          text = "Espas Administratè Verouye",
+          text =
+            if (isQuickResumeReady) {
+              when (lang) {
+                "fr" -> "Reprise d'activité rapide"
+                "en" -> "Quick Activity Resume"
+                "es" -> "Reanudación rápida"
+                else -> "Reprann Aktivite Rapid"
+              }
+            } else {
+              when (lang) {
+                "fr" -> "Espace Administrateur Verrouillé"
+                "en" -> "Admin Workspace Locked"
+                "es" -> "Espacio de Administrador Bloqueado"
+                else -> "Espas Administratè an Poz"
+              }
+            },
           style = MaterialTheme.typography.titleLarge,
           color = PureWhite,
           fontWeight = FontWeight.Bold,
@@ -566,7 +635,22 @@ fun BlockingAdminAuthGateOverlay(
           textAlign = TextAlign.Center,
         )
         Text(
-          text = "Verifye idantite pwopriyetè a pou debloke jesyon legliz la.",
+          text =
+            if (isQuickResumeReady) {
+              when (lang) {
+                "fr" -> "Votre session est en pause pour votre sécurité. Entrez votre code PIN pour reprendre immédiatement."
+                "en" -> "Your session paused for security. Enter your Quick PIN to resume right where you left off."
+                "es" -> "Tu sesión se pausó por seguridad. Ingresa tu PIN rápido para continuar al instante."
+                else -> "Sesyon ou a pran yon poz pou sekirite. Antre PIN ou pou reprann aktivite w imedyatman."
+              }
+            } else {
+              when (lang) {
+                "fr" -> "Vérifiez votre identité administrateur pour déverrouiller la gestion de votre église."
+                "en" -> "Verify your administrator identity to unlock church management."
+                "es" -> "Verifica tu identidad de administrador para desbloquear la gestión de tu iglesia."
+                else -> "Verifye idantite administratè w pou debloke jesyon legliz ou a."
+              }
+            },
           style = MaterialTheme.typography.bodySmall,
           color = MutedGlassText,
           textAlign = TextAlign.Center,
@@ -590,12 +674,19 @@ fun BlockingAdminAuthGateOverlay(
           onCompleteLegacyMigration = onCompleteLegacyMigration,
           onResetLegacyMigration = onResetLegacyMigration,
           onLocalError = onLocalError,
+          currentLanguageCode = currentLanguageCode,
         )
 
         Spacer(modifier = Modifier.height(4.dp))
 
         GlassButton(
-          text = "Dekonekte / Chanje Kont",
+          text =
+            when (lang) {
+              "fr" -> "Se déconnecter / Changer de compte"
+              "en" -> "Sign Out / Switch Account"
+              "es" -> "Cerrar sesión / Cambiar cuenta"
+              else -> "Dekonekte / Chanje Kont"
+            },
           icon = Icons.AutoMirrored.Filled.Logout,
           isPrimaryNeon = false,
           onClick = onExitToAuthPortal,
@@ -874,20 +965,23 @@ fun CreateChurchCloudDialog(
 
 /**
  * Admin Security Settings card displayed in ProfileAndSettingsScreen for Church Owners/Admins:
- * Quick PIN Unlock toggle + 4-6 digit PIN setup/update + Auto-Lock timeout selector + Manual Lock.
+ * Quick PIN Fast Activity Resume toggle + 4-6 digit PIN setup/update + Auto-Lock pause timeout + Manual Lock.
  */
 @Composable
 fun ChurchAdminSecuritySettingsCard(
   church: Church,
   isSaving: Boolean,
+  currentLanguageCode: String = "ht",
   onSaveSettings: (quickPinEnabled: Boolean, newPinOrNull: String?, autoLockMinutes: Int) -> Unit,
   onLockAdminNow: () -> Unit,
 ) {
+  val lang = currentLanguageCode.lowercase()
   var showPinSetupDialog by remember { mutableStateOf(false) }
   var pendingEnableAfterPin by remember { mutableStateOf(false) }
 
   val quickPinOn = church.effectiveQuickPinEnabled
   val currentAutoLock = church.effectiveAutoLockMinutes
+  val autoLockOptions = listOf(0 to "Off", 1 to "1m", 5 to "5m", 10 to "10m", 15 to "15m", 30 to "30m")
 
   PremiumGlassCard(
     cornerRadius = 22.dp,
@@ -904,7 +998,13 @@ fun ChurchAdminSecuritySettingsCard(
       )
       Spacer(modifier = Modifier.width(8.dp))
       Text(
-        text = "Sekirite Espas Admin (PIN & Auto-Lock)",
+        text =
+          when (lang) {
+            "fr" -> "Reprise Rapide (PIN) & Pause Auto"
+            "en" -> "Quick Resume (PIN) & Auto-Lock"
+            "es" -> "Reanudación Rápida (PIN) y Pausa"
+            else -> "Reprann Aktivite Rapid (PIN) & Poz"
+          },
         style = MaterialTheme.typography.titleMedium,
         color = PureWhite,
         fontWeight = FontWeight.Bold,
@@ -913,23 +1013,42 @@ fun ChurchAdminSecuritySettingsCard(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    // Quick PIN Unlock Toggle
+    // Quick PIN Resume Toggle
     Row(
       modifier = Modifier.fillMaxWidth(),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-      Column(modifier = Modifier.weight(1f)) {
+      Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
         Text(
-          text = "Deblokaj Rapid ak PIN (4–6 chif)",
+          text =
+            when (lang) {
+              "fr" -> "Reprise rapide avec PIN (4–6 chiffres)"
+              "en" -> "Quick Resume with PIN (4–6 digits)"
+              "es" -> "Reanudación rápida con PIN (4–6 dígitos)"
+              else -> "Reprann Aktivite Rapid ak PIN (4–6 chif)"
+            },
           style = MaterialTheme.typography.titleSmall,
           color = PureWhite,
           fontWeight = FontWeight.Bold,
         )
         Text(
           text =
-            if (quickPinOn) "Aktive • Re-ouvri Espas Admin rapid apre verouyaj"
-            else "Dezaktive • Mande Imèl + Modpas oswa Google chak fwa",
+            if (quickPinOn) {
+              when (lang) {
+                "fr" -> "Actif • Reprenez votre session admin par PIN après une pause"
+                "en" -> "Enabled • Resume your admin session with PIN after auto-lock"
+                "es" -> "Activo • Reanuda tu sesión admin con PIN tras la pausa"
+                else -> "Aktive • Reprann aktivite admin lan rapid ak PIN apre tan de poz la"
+              }
+            } else {
+              when (lang) {
+                "fr" -> "Désactivé • Demande e-mail + mot de passe après verrouillage"
+                "en" -> "Disabled • Requires Email + Password after lock"
+                "es" -> "Desactivado • Solicita correo + contraseña al bloquear"
+                else -> "Dezaktive • Mande Imèl + Modpas apre verouyaj"
+              }
+            },
           style = MaterialTheme.typography.bodySmall,
           color = MutedGlassText,
         )
@@ -938,11 +1057,12 @@ fun ChurchAdminSecuritySettingsCard(
         checked = quickPinOn,
         enabled = !isSaving,
         onCheckedChange = { wantEnable ->
-          if (wantEnable && church.adminPasscode.isNullOrBlank()) {
+          val targetAutoLock = if (wantEnable && currentAutoLock <= 0) 5 else currentAutoLock
+          if (wantEnable && church.adminPasscode.isBlank()) {
             pendingEnableAfterPin = true
             showPinSetupDialog = true
           } else {
-            onSaveSettings(wantEnable, null, currentAutoLock)
+            onSaveSettings(wantEnable, null, targetAutoLock)
           }
         },
         colors =
@@ -958,8 +1078,21 @@ fun ChurchAdminSecuritySettingsCard(
 
     GlassButton(
       text =
-        if (church.adminPasscode.isNullOrBlank()) "Kreye yon Kòd PIN Rapid"
-        else "Chanje Kòd PIN Rapid la",
+        if (church.adminPasscode.isBlank()) {
+          when (lang) {
+            "fr" -> "Créer un code PIN de reprise"
+            "en" -> "Create Quick Resume PIN"
+            "es" -> "Crear PIN de reanudación"
+            else -> "Kreye yon Kòd PIN Rapid"
+          }
+        } else {
+          when (lang) {
+            "fr" -> "Modifier le code PIN de reprise"
+            "en" -> "Change Quick Resume PIN"
+            "es" -> "Cambiar PIN de reanudación"
+            else -> "Chanje Kòd PIN Rapid la"
+          }
+        },
       icon = Icons.Default.Pin,
       isPrimaryNeon = false,
       enabled = !isSaving,
@@ -974,23 +1107,50 @@ fun ChurchAdminSecuritySettingsCard(
     Spacer(modifier = Modifier.height(14.dp))
 
     Text(
-      text = "Delè Verouyaj Otomatik (Inaktivite)",
+      text =
+        when (lang) {
+          "fr" -> "Temps de pause automatique (Inactivité)"
+          "en" -> "Auto-Lock Pause Timeout (Inactivity)"
+          "es" -> "Tiempo de pausa automática (Inactividad)"
+          else -> "Tan de Poz Otomatik (Inaktivite)"
+        },
       style = MaterialTheme.typography.titleSmall,
       color = PureWhite,
       fontWeight = FontWeight.Bold,
     )
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+      text =
+        if (currentAutoLock > 0) {
+          when (lang) {
+            "fr" -> "Verrouillage automatique actif après $currentAutoLock min d'inactivité"
+            "en" -> "Auto-lock active after $currentAutoLock min of inactivity"
+            "es" -> "Bloqueo automático activo tras $currentAutoLock min de inactividad"
+            else -> "Poz otomatik aktif apre $currentAutoLock minit inaktivite"
+          }
+        } else {
+          when (lang) {
+            "fr" -> "Désactivé (Off) • Le verrouillage se fait uniquement manuellement"
+            "en" -> "Disabled (Off) • Session only locks when you lock manually"
+            "es" -> "Desactivado (Off) • Solo se bloquea de forma manual"
+            else -> "Dezaktive (Off) • Verouyaj la ap fèt sèlman lè w klike manyèlman"
+          }
+        },
+      style = MaterialTheme.typography.bodySmall,
+      color = if (currentAutoLock > 0) SuccessGreen else MutedGlassText,
+    )
     Spacer(modifier = Modifier.height(8.dp))
 
-    val options = listOf(5 to "5m", 10 to "10m", 15 to "15m", 30 to "30m", 0 to "Off")
     Row(
       modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-      options.forEach { (minutes, label) ->
+      autoLockOptions.forEach { (minutes, label) ->
         val selected = currentAutoLock == minutes
         Box(
           modifier =
             Modifier.weight(1f)
+              .minimumInteractiveComponentSize()
               .clip(RoundedCornerShape(12.dp))
               .background(if (selected) ElectricBlue else Color(0x660B1D3D))
               .border(
@@ -1007,9 +1167,10 @@ fun ChurchAdminSecuritySettingsCard(
         ) {
           Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall,
             color = PureWhite,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
           )
         }
       }
@@ -1018,7 +1179,13 @@ fun ChurchAdminSecuritySettingsCard(
     Spacer(modifier = Modifier.height(12.dp))
 
     GlassButton(
-      text = "Verouye Espas Admin Kounye a",
+      text =
+        when (lang) {
+          "fr" -> "Mettre en pause / Verrouiller maintenant"
+          "en" -> "Pause / Lock Admin Now"
+          "es" -> "Pausar / Bloquear ahora"
+          else -> "Mete an Poz / Verouye Kounye a"
+        },
       icon = Icons.Default.Lock,
       isPrimaryNeon = false,
       accentColor = BrandOrange,
@@ -1035,10 +1202,22 @@ fun ChurchAdminSecuritySettingsCard(
 
     GlassDialog(
       onDismissRequest = { showPinSetupDialog = false },
-      title = "Konfigire PIN Rapid Admin",
+      title =
+        when (lang) {
+          "fr" -> "Configurer le PIN de reprise rapide"
+          "en" -> "Set Up Quick Resume PIN"
+          "es" -> "Configurar PIN de reanudación"
+          else -> "Konfigire PIN Reprann Aktivite"
+        },
     ) {
       Text(
-        text = "Antre yon kòd chif 4 a 6 chif. Li pral chiffres an SHA-256 pou senkronize ak Web la.",
+        text =
+          when (lang) {
+            "fr" -> "Choisissez 4 à 6 chiffres pour reprendre rapidement votre espace admin après une pause automatique."
+            "en" -> "Choose 4 to 6 digits to rapidly resume your admin workspace after an auto-lock pause."
+            "es" -> "Elige de 4 a 6 dígitos para reanudar rápidamente tu espacio admin tras una pausa."
+            else -> "Chwazi 4 a 6 chif pou reprann espas admin lan rapid apre tan de poz otomatik la."
+          },
         style = MaterialTheme.typography.bodySmall,
         color = MutedGlassText,
       )
@@ -1058,7 +1237,13 @@ fun ChurchAdminSecuritySettingsCard(
           if (it.length <= 6 && it.all { c -> c.isDigit() }) pinInput = it
           dialogErr = null
         },
-        label = "Nouvo PIN (4–6 chif)",
+        label =
+          when (lang) {
+            "fr" -> "Nouveau PIN (4–6 chiffres)"
+            "en" -> "New PIN (4–6 digits)"
+            "es" -> "Nuevo PIN (4–6 dígitos)"
+            else -> "Nouvo PIN (4–6 chif)"
+          },
         leadingIcon = Icons.Default.Pin,
         visualTransformation = PasswordVisualTransformation(),
         keyboardType = KeyboardType.NumberPassword,
@@ -1071,7 +1256,13 @@ fun ChurchAdminSecuritySettingsCard(
           if (it.length <= 6 && it.all { c -> c.isDigit() }) pinConfirmInput = it
           dialogErr = null
         },
-        label = "Konfime PIN nan",
+        label =
+          when (lang) {
+            "fr" -> "Confirmer le PIN"
+            "en" -> "Confirm PIN"
+            "es" -> "Confirmar PIN"
+            else -> "Konfime PIN nan"
+          },
         leadingIcon = Icons.Default.Pin,
         visualTransformation = PasswordVisualTransformation(),
         keyboardType = KeyboardType.NumberPassword,
@@ -1080,29 +1271,51 @@ fun ChurchAdminSecuritySettingsCard(
       Spacer(modifier = Modifier.height(14.dp))
       Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         GlassButton(
-          text = "Anile",
+          text =
+            when (lang) {
+              "fr" -> "Annuler"
+              "en" -> "Cancel"
+              "es" -> "Cancelar"
+              else -> "Anile"
+            },
           isPrimaryNeon = false,
           onClick = { showPinSetupDialog = false },
           modifier = Modifier.weight(1f),
         )
         GlassButton(
-          text = "Anrejistre",
+          text =
+            when (lang) {
+              "fr" -> "Enregistrer"
+              "en" -> "Save"
+              "es" -> "Guardar"
+              else -> "Anrejistre"
+            },
           isPrimaryNeon = true,
           onClick = {
             if (!pinInput.matches(Regex("^\\d{4,6}$"))) {
-              dialogErr = "PIN lan dwe gen 4 a 6 chif."
+              dialogErr =
+                when (lang) {
+                  "fr" -> "Le PIN doit contenir entre 4 et 6 chiffres."
+                  "en" -> "PIN must be 4 to 6 digits."
+                  "es" -> "El PIN debe tener entre 4 y 6 dígitos."
+                  else -> "PIN lan dwe gen 4 a 6 chif."
+                }
               return@GlassButton
             }
             if (pinInput != pinConfirmInput) {
-              dialogErr = "De PIN yo pa menm."
+              dialogErr =
+                when (lang) {
+                  "fr" -> "Les deux codes PIN ne correspondent pas."
+                  "en" -> "The two PINs do not match."
+                  "es" -> "Los dos PIN no coinciden."
+                  else -> "De PIN yo pa menm."
+                }
               return@GlassButton
             }
             showPinSetupDialog = false
-            onSaveSettings(
-              if (pendingEnableAfterPin) true else quickPinOn,
-              pinInput,
-              currentAutoLock,
-            )
+            val nextEnabled = if (pendingEnableAfterPin) true else quickPinOn
+            val nextAutoLock = if (nextEnabled && currentAutoLock <= 0) 5 else currentAutoLock
+            onSaveSettings(nextEnabled, pinInput, nextAutoLock)
           },
           modifier = Modifier.weight(1f),
           testTag = "setup_quick_pin_save_btn",
@@ -1118,12 +1331,20 @@ fun ChurchAdminSecuritySettingsCard(
 @Composable
 fun AutoLockWarningDialog(
   secondsRemaining: Int,
+  currentLanguageCode: String = "ht",
   onStayActive: () -> Unit,
   onLockNow: () -> Unit,
 ) {
+  val lang = currentLanguageCode.lowercase()
   GlassDialog(
     onDismissRequest = onStayActive,
-    title = "Verouyaj Otomatik",
+    title =
+      when (lang) {
+        "fr" -> "Mise en pause automatique"
+        "en" -> "Automatic Pause"
+        "es" -> "Pausa automática"
+        else -> "Poz Otomatik"
+      },
   ) {
     Column(
       modifier = Modifier.fillMaxWidth(),
@@ -1137,14 +1358,26 @@ fun AutoLockWarningDialog(
         modifier = Modifier.size(40.dp),
       )
       Text(
-        text = "Sesyon Admin pral verouye nan ${secondsRemaining}s poutèt inaktivite.",
+        text =
+          when (lang) {
+            "fr" -> "Votre session Admin va se verrouiller dans ${secondsRemaining}s pour cause d'inactivité."
+            "en" -> "Your Admin session will pause in ${secondsRemaining}s due to inactivity."
+            "es" -> "Tu sesión Admin se bloqueará en ${secondsRemaining}s por inactividad."
+            else -> "Sesyon Admin ou a pral mete an poz nan ${secondsRemaining}s poutèt inaktivite."
+          },
         style = MaterialTheme.typography.bodyMedium,
         color = PureWhite,
         textAlign = TextAlign.Center,
       )
       Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         GlassButton(
-          text = "Verouye Kounye a",
+          text =
+            when (lang) {
+              "fr" -> "Verrouiller"
+              "en" -> "Lock Now"
+              "es" -> "Bloquear"
+              else -> "Verouye"
+            },
           isPrimaryNeon = false,
           accentColor = BrandOrange,
           onClick = onLockNow,
@@ -1152,7 +1385,13 @@ fun AutoLockWarningDialog(
           testTag = "autolock_warning_lock_now",
         )
         GlassButton(
-          text = "Kontinye",
+          text =
+            when (lang) {
+              "fr" -> "Continuer"
+              "en" -> "Stay Active"
+              "es" -> "Continuar"
+              else -> "Kontinye"
+            },
           isPrimaryNeon = true,
           onClick = onStayActive,
           modifier = Modifier.weight(1f),

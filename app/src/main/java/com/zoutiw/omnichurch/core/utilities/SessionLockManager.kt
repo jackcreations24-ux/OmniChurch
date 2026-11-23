@@ -2,6 +2,7 @@ package com.zoutiw.omnichurch.core.utilities
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -9,6 +10,7 @@ import com.zoutiw.omnichurch.data.models.Church
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONObject
@@ -39,9 +41,9 @@ class SessionLockManager(private val context: Context? = null) {
 
   val lockedChurchesFlow: Flow<Map<String, Boolean>> =
     if (context != null) {
-      context.omniAdminLockDataStore.data.map { prefs ->
-        parseLockedMap(prefs[keyLockedChurchesJson])
-      }
+      context.omniAdminLockDataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs -> parseLockedMap(prefs[keyLockedChurchesJson]) }
     } else {
       _inMemoryLockedChurches
     }
@@ -120,7 +122,10 @@ class SessionLockManager(private val context: Context? = null) {
 
   suspend fun getLastAdminBackgroundTimestamp(): Long? {
     return if (context != null) {
-      context.omniAdminLockDataStore.data.map { prefs -> prefs[keyLastAdminBackgroundAtMs] }.first()
+      context.omniAdminLockDataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs -> prefs[keyLastAdminBackgroundAtMs] }
+        .first()
     } else {
       _inMemoryTimestamp.value
     }
@@ -213,7 +218,7 @@ class SessionLockManager(private val context: Context? = null) {
     }
 
     fun canQuickPinUnlock(church: Church, user: FirebaseUser?): Boolean {
-      if (!church.quickPinEnabled) return false
+      if (!church.effectiveQuickPinEnabled) return false
       val eval = evaluateOwnership(church, user)
       return eval.isAuthorized
     }

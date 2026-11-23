@@ -72,15 +72,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.Refresh
 import com.zoutiw.omnichurch.data.models.Member
 import com.zoutiw.omnichurch.data.models.UserProfile
 import com.zoutiw.omnichurch.presentation.components.GlassButton
 import com.zoutiw.omnichurch.presentation.components.GlassDialog
 import com.zoutiw.omnichurch.presentation.components.GlassInputField
+import com.zoutiw.omnichurch.presentation.components.GlassLoadingIndicator
 import com.zoutiw.omnichurch.presentation.components.GlassTopBar
 import com.zoutiw.omnichurch.presentation.components.MemberAvatar3D
 import com.zoutiw.omnichurch.presentation.components.PremiumEmptyState
 import com.zoutiw.omnichurch.presentation.components.PremiumGlassCard
+import com.zoutiw.omnichurch.presentation.viewmodels.UiState
 import com.zoutiw.omnichurch.ui.theme.BlueNeon
 import com.zoutiw.omnichurch.ui.theme.BrandGold
 import com.zoutiw.omnichurch.ui.theme.BrandOrange
@@ -124,6 +127,8 @@ fun AdminMemberListScreen(
     ministryRole: String,
   ) -> Unit,
   modifier: Modifier = Modifier,
+  churchMembersUiState: UiState<List<Member>> = UiState.Success(churchMembers),
+  onRetryLoadMembers: () -> Unit = {},
 ) {
   BackHandler(onBack = onBackClick)
   val context = LocalContext.current
@@ -282,21 +287,84 @@ fun AdminMemberListScreen(
         }
       }
 
-      // 4. Member List or Empty State
-      if (filteredMembers.isEmpty()) {
-        item {
-          Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            PremiumEmptyState(
-              title = if (searchQuery.isNotBlank()) "Okenn Manm Pa Koresponn" else "Okenn Manm Anrejistre",
-              subtitle =
-                if (searchQuery.isNotBlank()) "Pa gen okenn manm ki jwenn ak rechèch \"$searchQuery\"."
-                else "Anrejistreman nouvo manm fèt sèlman sou Platfòm Web OmniChurch Pro a. Yon fwa yo anrejistre sou Web la, y ap parèt isit la otomatikman.",
-              icon = Icons.Default.People,
-            )
+      // 4. Member List, Loading, Error, or Empty State
+      when {
+        churchMembersUiState is UiState.Loading && churchMembers.isEmpty() -> {
+          item {
+            Column(
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
+              horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+              GlassLoadingIndicator()
+              Spacer(modifier = Modifier.height(14.dp))
+              Text(
+                text = "Ap chaje lis manm legliz la...",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MutedGlassText,
+                textAlign = TextAlign.Center,
+              )
+            }
           }
         }
-      } else {
-        items(filteredMembers, key = { it.id.ifBlank { it.effectiveMatrikil } }) { memberItem ->
+        churchMembersUiState is UiState.Error && churchMembers.isEmpty() -> {
+          item {
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
+              PremiumGlassCard(
+                cornerRadius = 20.dp,
+                contentPadding = PaddingValues(20.dp),
+              ) {
+                Column(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.People,
+                    contentDescription = null,
+                    tint = BrandOrange,
+                    modifier = Modifier.size(44.dp),
+                  )
+                  Spacer(modifier = Modifier.height(12.dp))
+                  Text(
+                    text = "Nou pa t kapab chaje lis manm yo",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = PureWhite,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                  )
+                  Spacer(modifier = Modifier.height(6.dp))
+                  Text(
+                    text = churchMembersUiState.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MutedGlassText,
+                    textAlign = TextAlign.Center,
+                  )
+                  Spacer(modifier = Modifier.height(16.dp))
+                  GlassButton(
+                    text = "Re-eseye",
+                    icon = Icons.Default.Refresh,
+                    onClick = onRetryLoadMembers,
+                    modifier = Modifier.fillMaxWidth().testTag("retry_load_members_button"),
+                  )
+                }
+              }
+            }
+          }
+        }
+        filteredMembers.isEmpty() -> {
+          item {
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+              PremiumEmptyState(
+                title = if (searchQuery.isNotBlank()) "Okenn Manm Pa Koresponn" else "Okenn Manm Anrejistre",
+                subtitle =
+                  if (searchQuery.isNotBlank()) "Pa gen okenn manm ki jwenn ak rechèch \"$searchQuery\"."
+                  else "Anrejistreman nouvo manm fèt sèlman sou Platfòm Web OmniChurch Pro a. Yon fwa yo anrejistre sou Web la, y ap parèt isit la otomatikman.",
+                icon = Icons.Default.People,
+              )
+            }
+          }
+        }
+        else -> {
+          items(filteredMembers, key = { it.id.ifBlank { it.effectiveMatrikil } }) { memberItem ->
           val itemKey = memberItem.id.ifBlank { memberItem.effectiveMatrikil }
           SwipeableMemberRow(
             member = memberItem,
@@ -331,6 +399,7 @@ fun AdminMemberListScreen(
               Toast.makeText(context, "ID ${memberItem.effectiveMatrikil} kopye!", Toast.LENGTH_SHORT).show()
             },
           )
+          }
         }
       }
     }

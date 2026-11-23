@@ -12,6 +12,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -92,8 +93,10 @@ import com.zoutiw.omnichurch.presentation.components.MemberAvatar3D
 import com.zoutiw.omnichurch.presentation.components.Neumorphic3DActionButton
 import com.zoutiw.omnichurch.core.ads.EffectiveMobileAdMobState
 import com.zoutiw.omnichurch.core.ads.OmniAdPlacement
+import com.zoutiw.omnichurch.presentation.components.LogoVariant
 import com.zoutiw.omnichurch.presentation.components.OmniAdMobBanner
-import com.zoutiw.omnichurch.presentation.components.OmniChurchBrandHeader
+import com.zoutiw.omnichurch.presentation.components.OmniChurchLogo
+import com.zoutiw.omnichurch.presentation.components.OmniChurchProBadge
 import com.zoutiw.omnichurch.presentation.components.OmniChurchSanctuaryHeroCanvas
 import com.zoutiw.omnichurch.presentation.components.PremiumAnnouncementCard
 import com.zoutiw.omnichurch.presentation.components.PremiumEmptyState
@@ -136,8 +139,16 @@ fun MemberHomeScreen(
       title: String,
       content: String,
       department: String,
+      category: String,
+      date: String,
+      targetAudience: String,
       isPinned: Boolean,
+      showToastOnLogin: Boolean,
+      toastAlertLevel: String,
+      isScheduledNotification: Boolean,
+      scheduledNotificationDate: String?,
       posterUrl: String?,
+      serviceId: String?,
     ) -> Unit,
   onCreateService: (
     title: String,
@@ -162,11 +173,12 @@ fun MemberHomeScreen(
   ) -> Unit,
   modifier: Modifier = Modifier,
   reactionSummaries: Map<String, TargetReactionSummary> = emptyMap(),
+  commentCounts: Map<String, Int> = emptyMap(),
   onReactToComment: (commentId: String, reactionType: String) -> Unit = { _, _ -> },
   onDeleteService: (serviceId: String) -> Unit = {},
   onDeleteAnnouncement: (announcementId: String) -> Unit = {},
   isAdminSession: Boolean = false,
-  canCreateService: Boolean = isAdminSession,
+  canCreateService: Boolean = isAdminSession || userProfile?.isAdminOrSuperAdmin == true,
   canEditService: Boolean = canCreateService,
   onUpdateService: (
     existingService: ChurchService,
@@ -191,6 +203,8 @@ fun MemberHomeScreen(
   ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
   churchMembers: List<Member> = emptyList(),
   activeChurchName: String? = null,
+  activeChurchLogoUrl: String? = null,
+  currentLanguageCode: String = "ht",
   isChromeVisible: Boolean = true,
   onChromeVisibilityChange: (Boolean) -> Unit = {},
   adMobState: EffectiveMobileAdMobState = EffectiveMobileAdMobState(),
@@ -313,31 +327,64 @@ fun MemberHomeScreen(
           onActionClick = onOpenServices,
           modifier = Modifier.padding(horizontal = 14.dp),
           trailingExtraContent =
-            if (canCreateService) {
+            if (canCreateService || isAdmin) {
               {
-                Box(
-                  modifier =
-                    Modifier.padding(end = 10.dp)
-                      .clip(RoundedCornerShape(50))
-                      .background(ElectricBlue.copy(alpha = 0.25f))
-                      .border(1.dp, BlueNeon.copy(alpha = 0.6f), RoundedCornerShape(50))
-                      .clickable { showCreateServiceDialog = true }
-                      .padding(horizontal = 10.dp, vertical = 4.dp)
-                      .testTag("home_add_service_chip"),
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(6.dp),
+                  modifier = Modifier.padding(end = 8.dp),
                 ) {
-                  Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                      imageVector = Icons.Default.Add,
-                      contentDescription = stringResource(R.string.feed_add_service),
-                      tint = BlueNeon,
-                      modifier = Modifier.size(15.dp),
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                      text = stringResource(R.string.feed_add_service),
-                      style = MaterialTheme.typography.labelSmall,
-                      color = PureWhite,
-                    )
+                  if (isAdmin) {
+                    Box(
+                      modifier =
+                        Modifier.clip(RoundedCornerShape(50))
+                          .background(BrandGold.copy(alpha = 0.22f))
+                          .border(1.dp, BrandGold.copy(alpha = 0.65f), RoundedCornerShape(50))
+                          .clickable { showCreateAnnouncementDialog = true }
+                          .padding(horizontal = 9.dp, vertical = 4.dp)
+                          .testTag("home_add_announcement_chip"),
+                    ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                          imageVector = Icons.Default.Add,
+                          contentDescription = stringResource(R.string.feed_add_announcement),
+                          tint = BrandGold,
+                          modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                          text = stringResource(R.string.feed_add_announcement),
+                          style = MaterialTheme.typography.labelSmall,
+                          color = PureWhite,
+                        )
+                      }
+                    }
+                  }
+                  if (canCreateService) {
+                    Box(
+                      modifier =
+                        Modifier.clip(RoundedCornerShape(50))
+                          .background(ElectricBlue.copy(alpha = 0.25f))
+                          .border(1.dp, BlueNeon.copy(alpha = 0.6f), RoundedCornerShape(50))
+                          .clickable { showCreateServiceDialog = true }
+                          .padding(horizontal = 9.dp, vertical = 4.dp)
+                          .testTag("home_add_service_chip"),
+                    ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                          imageVector = Icons.Default.Add,
+                          contentDescription = stringResource(R.string.feed_add_service),
+                          tint = BlueNeon,
+                          modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                          text = stringResource(R.string.feed_add_service),
+                          style = MaterialTheme.typography.labelSmall,
+                          color = PureWhite,
+                        )
+                      }
+                    }
                   }
                 }
               }
@@ -371,6 +418,7 @@ fun MemberHomeScreen(
           PremiumServiceCard(
             service = service,
             reactionSummary = reactionSummaries[service.id],
+            commentsCountOverride = commentCounts[service.id],
             onReactClick = { onReactToItem(service.id, true, "pray") },
             onSelectReaction = { reactionType ->
               onReactToItem(service.id, true, reactionType.key)
@@ -379,6 +427,8 @@ fun MemberHomeScreen(
             isAdmin = isAdmin,
             canEdit = canEditService,
             churchMembers = churchMembers,
+            churchLogoUrl = activeChurchLogoUrl ?: member?.churchLogoUrl,
+            languageCode = currentLanguageCode,
             onEditClick =
               if (canEditService) {
                 { editingService = service }
@@ -415,11 +465,40 @@ fun MemberHomeScreen(
           .statusBarsPadding()
           .padding(horizontal = 16.dp, vertical = 4.dp),
       ) {
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-          OmniChurchBrandHeader(
-            badgeText = stringResource(R.string.app_subtitle_mobile),
-            isProStyle = false,
-          )
+        BoxWithConstraints(
+          modifier = Modifier.fillMaxWidth(),
+          contentAlignment = Alignment.Center,
+        ) {
+          val isTabletOrExpanded = maxWidth >= 600.dp
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+          ) {
+            if (isTabletOrExpanded) {
+              OmniChurchLogo(
+                variant = LogoVariant.Full,
+                modifier = Modifier.height(44.dp),
+                contentDescription = "OmniChurch PRO Official Logo",
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              OmniChurchProBadge()
+            } else {
+              OmniChurchLogo(
+                variant = LogoVariant.Icon,
+                modifier = Modifier.size(32.dp),
+                contentDescription = "OmniChurch PRO Official Icon",
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = "OmniChurch",
+                style = MaterialTheme.typography.titleMedium,
+                color = PureWhite,
+                fontWeight = FontWeight.ExtraBold,
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              OmniChurchProBadge()
+            }
+          }
         }
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -580,8 +659,35 @@ fun MemberHomeScreen(
     CreateAnnouncementBottomSheet(
       onDismissRequest = { showCreateAnnouncementDialog = false },
       availableServices = servicesList,
-      onSubmit = { aTitle, aContent, aDept, _, _, _, aPinned, _, _, _, _, aPoster, _ ->
-        onCreateAnnouncement(aTitle, aContent, aDept, aPinned, aPoster)
+      onSubmit = {
+        aTitle,
+        aContent,
+        aDept,
+        aCategory,
+        aDate,
+        aAudience,
+        aPinned,
+        aShowToast,
+        aAlertLevel,
+        aScheduled,
+        aScheduledDate,
+        aPoster,
+        aServiceId ->
+        onCreateAnnouncement(
+          aTitle,
+          aContent,
+          aDept,
+          aCategory,
+          aDate,
+          aAudience,
+          aPinned,
+          aShowToast,
+          aAlertLevel,
+          aScheduled,
+          aScheduledDate,
+          aPoster,
+          aServiceId,
+        )
       },
     )
   }

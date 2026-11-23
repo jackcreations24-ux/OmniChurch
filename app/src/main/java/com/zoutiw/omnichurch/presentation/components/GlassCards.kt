@@ -88,6 +88,7 @@ fun PremiumServiceCard(
   onCommentClick: () -> Unit,
   modifier: Modifier = Modifier,
   reactionSummary: TargetReactionSummary? = null,
+  commentsCountOverride: Int? = null,
   onSelectReaction: ((OmniReactionType) -> Unit)? = null,
   isAdmin: Boolean = false,
   onShareClick: (() -> Unit)? = null,
@@ -249,8 +250,10 @@ fun PremiumServiceCard(
             modifier = Modifier.size(19.dp),
           )
           Spacer(modifier = Modifier.width(5.dp))
+          val displayedCommentsCount =
+            maxOf(service.commentsCount, (commentsCountOverride ?: 0).toLong())
           Text(
-            text = service.commentsCount.toString(),
+            text = displayedCommentsCount.toString(),
             style = MaterialTheme.typography.labelLarge,
             color = GlassWhite,
           )
@@ -442,6 +445,7 @@ fun PremiumAnnouncementCard(
   onCommentClick: () -> Unit,
   modifier: Modifier = Modifier,
   reactionSummary: TargetReactionSummary? = null,
+  commentsCountOverride: Int? = null,
   onSelectReaction: ((OmniReactionType) -> Unit)? = null,
   isAdmin: Boolean = false,
   onShareClick: (() -> Unit)? = null,
@@ -582,8 +586,10 @@ fun PremiumAnnouncementCard(
             modifier = Modifier.size(17.dp),
           )
           Spacer(modifier = Modifier.width(5.dp))
+          val displayedCommentsCount =
+            maxOf(announcement.commentsCount, (commentsCountOverride ?: 0).toLong())
           Text(
-            text = announcement.commentsCount.toString(),
+            text = displayedCommentsCount.toString(),
             style = MaterialTheme.typography.labelMedium,
             color = GlassWhite,
           )

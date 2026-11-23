@@ -115,4 +115,72 @@ object CryptoSecurity {
     }
     return matched
   }
+
+  private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
+  private const val LOCAL_SECRET_KEY_ALIAS = "omnichurch_remembered_admin_key_v1"
+  private const val LOCAL_SECRET_PREFIX = "aesgcm:v1:"
+
+  private fun getOrCreateLocalSecretKey(): javax.crypto.SecretKey? {
+    return runCatching {
+      val keyStore = java.security.KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
+      val existing = keyStore.getKey(LOCAL_SECRET_KEY_ALIAS, null) as? javax.crypto.SecretKey
+      if (existing != null) return@runCatching existing
+
+      val keyGenerator =
+        javax.crypto.KeyGenerator.getInstance(
+          android.security.keystore.KeyProperties.KEY_ALGORITHM_AES,
+          KEYSTORE_PROVIDER,
+        )
+      val spec =
+        android.security.keystore.KeyGenParameterSpec.Builder(
+          LOCAL_SECRET_KEY_ALIAS,
+          android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or
+            android.security.keystore.KeyProperties.PURPOSE_DECRYPT,
+        )
+          .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+          .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+          .setKeySize(256)
+          .build()
+      keyGenerator.init(spec)
+      keyGenerator.generateKey()
+    }.getOrNull()
+  }
+
+  /**
+   * Encrypts a device-local credential (such as Remember Me password) with an Android Keystore
+   * hardware-backed AES-256-GCM key so plaintext passwords are never persisted to DataStore.
+   */
+  fun encryptLocalSecret(plaintext: String): String {
+    if (plaintext.isEmpty()) return ""
+    val key = getOrCreateLocalSecretKey() ?: return ""
+    return runCatching {
+      val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+      cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
+      val iv = cipher.iv
+      val ciphertext = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
+      val ivB64 = android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP)
+      val dataB64 = android.util.Base64.encodeToString(ciphertext, android.util.Base64.NO_WRAP)
+      "$LOCAL_SECRET_PREFIX$ivB64:$dataB64"
+    }.getOrDefault("")
+  }
+
+  /**
+   * Decrypts a local AES-256-GCM credential previously produced by [encryptLocalSecret].
+   */
+  fun decryptLocalSecret(encoded: String?): String {
+    val raw = encoded?.trim().orEmpty()
+    if (!raw.startsWith(LOCAL_SECRET_PREFIX)) return ""
+    val body = raw.removePrefix(LOCAL_SECRET_PREFIX)
+    val parts = body.split(":", limit = 2)
+    if (parts.size != 2) return ""
+    val key = getOrCreateLocalSecretKey() ?: return ""
+    return runCatching {
+      val iv = android.util.Base64.decode(parts[0], android.util.Base64.NO_WRAP)
+      val ciphertext = android.util.Base64.decode(parts[1], android.util.Base64.NO_WRAP)
+      val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+      val spec = javax.crypto.spec.GCMParameterSpec(128, iv)
+      cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, spec)
+      String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+    }.getOrDefault("")
+  }
 }

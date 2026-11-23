@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -42,14 +43,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.credentials.CredentialManager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -58,6 +65,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.zoutiw.omnichurch.core.ads.AdMobRemoteController
 import com.zoutiw.omnichurch.core.network.FirestoreProvider
 import com.zoutiw.omnichurch.core.network.NamedFirestoreProvider
 import com.zoutiw.omnichurch.core.utilities.LocaleHelper
@@ -72,8 +80,12 @@ import com.zoutiw.omnichurch.data.models.UserProfile
 import com.zoutiw.omnichurch.data.repositories.OmniChurchRepository
 import com.zoutiw.omnichurch.presentation.components.GlassBottomNavigation
 import com.zoutiw.omnichurch.presentation.components.GlassLoadingIndicator
+import com.zoutiw.omnichurch.presentation.components.OmniChurchSplashScreen
 import com.zoutiw.omnichurch.presentation.components.OmniNavTab
+import com.zoutiw.omnichurch.presentation.navigation.AdminAuthViewModel
 import com.zoutiw.omnichurch.presentation.navigation.OmniChurchViewModel
+import com.zoutiw.omnichurch.presentation.screens.auth.AutoLockWarningDialog
+import com.zoutiw.omnichurch.presentation.screens.auth.BlockingAdminAuthGateOverlay
 import com.zoutiw.omnichurch.presentation.screens.auth.OmniChurchAuthPortalScreen
 import com.zoutiw.omnichurch.presentation.screens.auth.signOutOmniChurch
 import com.zoutiw.omnichurch.presentation.screens.home.MemberHomeScreen
@@ -85,6 +97,7 @@ import com.zoutiw.omnichurch.presentation.screens.services.NotificationsScreen
 import com.zoutiw.omnichurch.presentation.screens.services.ProfileAndSettingsScreen
 import com.zoutiw.omnichurch.presentation.screens.services.ServiceDetailsScreen
 import com.zoutiw.omnichurch.presentation.screens.services.ServicesScreen
+import com.zoutiw.omnichurch.presentation.screens.verification.MemberPublicVerificationScreen
 import com.zoutiw.omnichurch.presentation.viewmodels.UiState
 import com.zoutiw.omnichurch.ui.theme.BrandGold
 import com.zoutiw.omnichurch.ui.theme.DeepNavy
@@ -119,11 +132,12 @@ object OmniRoutes {
   const val NOTIFICATIONS = "notifications"
   const val PROFILE_SETTINGS = "profile_settings"
   const val SERVICE_DETAILS = "service_details"
+  const val MEMBER_VERIFICATION = "member_verification"
 }
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
-    setTheme(R.style.Theme_MyApplication)
+    installSplashScreen()
     super.onCreate(savedInstanceState)
     FirestoreProvider.ensureFirebaseInitialized(applicationContext)
     NfcIntentBus.dispatch(intent)
@@ -176,7 +190,7 @@ fun OmniChurchRootHost(
           initializer {
             val app = checkNotNull(this[APPLICATION_KEY])
             val firestore = NamedFirestoreProvider.getInstance(app)
-            val repository = OmniChurchRepository(firestore)
+            val repository = OmniChurchRepository(db = firestore, context = app.applicationContext)
             val user = currentUser
             OmniChurchViewModel(
               repository = repository,
@@ -192,27 +206,40 @@ fun OmniChurchRootHost(
         }
     )
 
+  val adminAuthViewModel: AdminAuthViewModel =
+    viewModel(
+      factory =
+        viewModelFactory {
+          initializer {
+            AdminAuthViewModel(
+              authRepository = viewModel.repository.authRepository,
+              sessionLockManager = viewModel.repository.authRepository.sessionLockManager,
+            )
+          }
+        }
+    )
+
   LaunchedEffect(currentUser?.uid) {
     viewModel.syncAuthIdentity(currentUser?.uid.orEmpty())
   }
 
   val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
+  val rememberedAdminCredentials by viewModel.rememberedAdminCredentials.collectAsStateWithLifecycle()
+  val pendingAdminOwnedChurches by viewModel.pendingAdminOwnedChurches.collectAsStateWithLifecycle()
   val isAuthenticating by viewModel.isAuthenticating.collectAsStateWithLifecycle()
   val actionFeedbackMessage by viewModel.actionFeedbackMessage.collectAsStateWithLifecycle()
 
   val churches by viewModel.churchesState.collectAsStateWithLifecycle()
+  val churchesUiState by viewModel.churchesUiState.collectAsStateWithLifecycle()
   val scope = rememberCoroutineScope()
 
   if (!sessionState.isInitialized) {
-    Box(
-      modifier = Modifier.fillMaxSize().background(OmniBrushes.DeepBackgroundGradient),
-      contentAlignment = Alignment.Center,
-    ) {
-      GlassLoadingIndicator()
-    }
+    OmniChurchSplashScreen()
   } else if (!sessionState.isAuthenticated) {
     OmniChurchAuthPortalScreen(
       churches = churches,
+      churchesUiState = churchesUiState,
+      onRetryLoadChurches = { viewModel.retryLoadChurches() },
       sessionState = sessionState,
       isAuthenticating = isAuthenticating,
       currentLanguageCode = currentLanguageCode,
@@ -271,6 +298,36 @@ fun OmniChurchRootHost(
           onError = { msg -> viewModel.setFeedbackMessage(msg) },
         )
       },
+      rememberedAdminCredentials = rememberedAdminCredentials,
+      pendingAdminOwnedChurches = pendingAdminOwnedChurches,
+      onToggleRememberAdmin = { enabled ->
+        viewModel.setRememberAdminCredentialsEnabled(enabled)
+      },
+      onLoginAdminSmartWithEmailAndPassword = { email, password, rememberMe ->
+        viewModel.signInAdminSmartWithEmailAndPassword(
+          email = email,
+          password = password,
+          rememberMe = rememberMe,
+          onSuccess = {},
+          onError = { msg -> viewModel.setFeedbackMessage(msg) },
+        )
+      },
+      onLoginAdminSmartWithGoogle = {
+        viewModel.signInAdminSmartWithCurrentGoogleUser(
+          onSuccess = {},
+          onError = { msg -> viewModel.setFeedbackMessage(msg) },
+        )
+      },
+      onSelectOwnedAdminChurch = { ownedChurch ->
+        viewModel.selectOwnedAdminChurch(
+          church = ownedChurch,
+          onSuccess = {},
+          onError = { msg -> viewModel.setFeedbackMessage(msg) },
+        )
+      },
+      onCancelOwnedAdminChurchSelection = {
+        viewModel.cancelOwnedAdminChurchSelection()
+      },
       onSendAdminPasswordReset = { email, onSent, onError ->
         viewModel.sendAdminPasswordResetEmail(
           email = email,
@@ -282,6 +339,7 @@ fun OmniChurchRootHost(
   } else {
     AuthenticatedOmniChurchWorkspace(
       viewModel = viewModel,
+      adminAuthViewModel = adminAuthViewModel,
       preferencesManager = preferencesManager,
       currentLanguageCode = currentLanguageCode,
     )
@@ -291,6 +349,7 @@ fun OmniChurchRootHost(
 @Composable
 private fun AuthenticatedOmniChurchWorkspace(
   viewModel: OmniChurchViewModel,
+  adminAuthViewModel: AdminAuthViewModel,
   preferencesManager: OmniPreferencesManager,
   currentLanguageCode: String,
 ) {
@@ -300,19 +359,35 @@ private fun AuthenticatedOmniChurchWorkspace(
   val credentialManager = remember(activityContext) { CredentialManager.create(activityContext) }
 
   val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
+  val activeChurch by viewModel.activeChurchState.collectAsStateWithLifecycle()
   val userProfileState by viewModel.userProfileState.collectAsStateWithLifecycle()
   val currentMemberState by viewModel.currentMemberState.collectAsStateWithLifecycle()
   val servicesState by viewModel.servicesState.collectAsStateWithLifecycle()
   val activeAttendanceServices by viewModel.activeAttendanceServicesState.collectAsStateWithLifecycle()
   val churchMembers by viewModel.churchMembersState.collectAsStateWithLifecycle()
+  val churchMembersUiState by viewModel.churchMembersUiState.collectAsStateWithLifecycle()
   val announcementsState by viewModel.announcementsState.collectAsStateWithLifecycle()
+  val unreadAnnouncementIds by viewModel.unreadAnnouncementIdsState.collectAsStateWithLifecycle()
   val reactionSummaries by viewModel.reactionSummariesState.collectAsStateWithLifecycle()
+  val commentCounts by viewModel.commentCountsState.collectAsStateWithLifecycle()
   val notificationsState by viewModel.notificationsState.collectAsStateWithLifecycle()
   val memberQrBitmap by viewModel.memberQrBitmap.collectAsStateWithLifecycle()
   val scannerOutcome by viewModel.scannerOutcome.collectAsStateWithLifecycle()
+  val cardVerificationState by viewModel.cardVerificationState.collectAsStateWithLifecycle()
   val selectedScannerServiceId by viewModel.selectedScannerServiceId.collectAsStateWithLifecycle()
   val memberAttendanceHistory by viewModel.memberAttendanceHistoryState.collectAsStateWithLifecycle()
   val actionFeedbackMessage by viewModel.actionFeedbackMessage.collectAsStateWithLifecycle()
+  val lockedChurches by adminAuthViewModel.lockedChurches.collectAsStateWithLifecycle()
+  val adminFirebaseUser by adminAuthViewModel.firebaseUser.collectAsStateWithLifecycle()
+  val adminAuthBusy by adminAuthViewModel.isBusy.collectAsStateWithLifecycle()
+  val adminAuthError by adminAuthViewModel.authError.collectAsStateWithLifecycle()
+  val adminAuthInfo by adminAuthViewModel.infoMessage.collectAsStateWithLifecycle()
+  val autoLockWarningSeconds by adminAuthViewModel.autoLockWarningSeconds.collectAsStateWithLifecycle()
+  val legacyVerifiedChurchId by adminAuthViewModel.legacyVerifiedChurchId.collectAsStateWithLifecycle()
+  val legacyVerifiedPin by adminAuthViewModel.legacyVerifiedPin.collectAsStateWithLifecycle()
+  val lifecycleOwner = LocalLifecycleOwner.current
+  val adMobController = remember(context) { AdMobRemoteController.getInstance(context) }
+  val verificationConfig by adMobController.memberVerificationState.collectAsStateWithLifecycle()
 
   val navController = rememberNavController()
   val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -329,14 +404,61 @@ private fun AuthenticatedOmniChurchWorkspace(
   val userProfile = (userProfileState as? UiState.Success)?.data
   val member = (currentMemberState as? UiState.Success)?.data
   val isAdminSession = sessionState.isAdminSession || userProfile?.isAdminOrSuperAdmin == true
+  val isAdminLocked =
+    isAdminSession &&
+      activeChurch != null &&
+      (
+        lockedChurches[activeChurch!!.id] == true ||
+          (adminFirebaseUser == null && activeChurch!!.hasCloudOwner)
+      )
 
-  val unreadNotificationsCount =
-    when (val notifUi = notificationsState) {
-      is UiState.Success -> notifUi.data.count { !it.isRead }
-      else -> 0
+  DisposableEffect(lifecycleOwner, isAdminSession, activeChurch?.id, activeChurch?.effectiveAutoLockMinutes) {
+    val observer =
+      LifecycleEventObserver { _, event ->
+        when (event) {
+          Lifecycle.Event.ON_STOP -> adminAuthViewModel.onAppStopped(isAdminSession)
+          Lifecycle.Event.ON_START -> adminAuthViewModel.onAppStarted(isAdminSession, activeChurch)
+          else -> Unit
+        }
+      }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose {
+      lifecycleOwner.lifecycle.removeObserver(observer)
     }
+  }
+
+  LaunchedEffect(isAdminSession, isAdminLocked, activeChurch?.id, activeChurch?.effectiveAutoLockMinutes) {
+    adminAuthViewModel.updateInactivityWatcher(
+      isAdminSession = isAdminSession,
+      isAdminUnlocked = !isAdminLocked,
+      church = activeChurch,
+    )
+  }
+
+  val resolvedChurchId =
+    activeChurch?.id?.trim()?.takeIf { it.isNotBlank() }
+      ?: sessionState.activeChurchId.trim().takeIf { it.isNotBlank() }
+      ?: member?.churchId?.trim()?.takeIf { it.isNotBlank() }
+      ?: userProfile?.churchId?.trim().orEmpty()
+  val resolvedChurchName =
+    activeChurch?.name?.trim()?.takeIf { it.isNotBlank() }
+      ?: member?.churchName?.trim()?.takeIf { it.isNotBlank() }
+      ?: userProfile?.churchName?.trim()?.takeIf { it.isNotBlank() }
+      ?: "OmniChurch Pro"
+  val resolvedChurchLogoUrl =
+    activeChurch?.logoUrl?.trim()?.takeIf { it.isNotEmpty() }
+      ?: member?.churchLogoUrl?.trim()?.takeIf { it.isNotEmpty() }
+  val resolvedAuthorName =
+    userProfile?.displayName?.trim()?.takeIf { it.isNotBlank() }
+      ?: member?.effectiveFullName?.trim()?.takeIf { it.isNotBlank() }
+      ?: activeChurch?.pastor?.trim()?.takeIf { it.isNotBlank() }
+      ?: "Admin"
+  val availableServicesList = (servicesState as? UiState.Success)?.data ?: emptyList()
+
+  val unreadNotificationsCount = unreadAnnouncementIds.size
 
   val performFullSignOut: () -> Unit = {
+    adminAuthViewModel.signOutAdmin(credentialManager)
     viewModel.logoutCurrentSession {}
     signOutOmniChurch(credentialManager, scope)
   }
@@ -358,7 +480,21 @@ private fun AuthenticatedOmniChurchWorkspace(
           onSignOut = performFullSignOut,
         )
       } else {
-        Box(modifier = Modifier.fillMaxSize().background(OmniBrushes.DeepBackgroundGradient)) {
+        Box(
+          modifier =
+            Modifier.fillMaxSize()
+              .background(OmniBrushes.DeepBackgroundGradient)
+              .pointerInput(isAdminSession, isAdminLocked) {
+                awaitPointerEventScope {
+                  while (true) {
+                    awaitPointerEvent(PointerEventPass.Initial)
+                    if (isAdminSession && !isAdminLocked) {
+                      adminAuthViewModel.recordUserInteraction()
+                    }
+                  }
+                }
+              },
+        ) {
           NavHost(
             navController = navController,
             startDestination = OmniRoutes.HOME,
@@ -387,48 +523,55 @@ private fun AuthenticatedOmniChurchWorkspace(
                 onOpenProfile = { navController.navigate(OmniRoutes.PROFILE_SETTINGS) },
                 onOpenMemberList = { navController.navigate(OmniRoutes.ADMIN_MEMBER_LIST) },
                 onReactToItem = { targetId, isService, reactionType ->
-                  val targetChurchId = member?.churchId?.takeIf { it.isNotBlank() }
-                  ?: userProfile?.churchId?.takeIf { it.isNotBlank() }
-                  ?: sessionState.activeChurchId
                   viewModel.reactToFeedItem(
                     targetId = targetId,
                     isServiceTarget = isService,
-                    churchId = targetChurchId,
+                    churchId = resolvedChurchId,
                     reactionType = OmniReactionType.fromKey(reactionType),
                   )
                 },
                 observeComments = { targetId ->
-                  val targetChurchId = member?.churchId?.takeIf { it.isNotBlank() }
-                  ?: userProfile?.churchId?.takeIf { it.isNotBlank() }
-                  ?: sessionState.activeChurchId
-                  viewModel.observeCommentsForTarget(targetChurchId, targetId)
+                  viewModel.observeCommentsForTarget(resolvedChurchId, targetId)
                 },
                 onPostComment = { targetId, isService, content ->
                   viewModel.postComment(targetId, isService, content)
                 },
-                onCreateAnnouncement = { title, content, department, isPinned, posterUrl ->
-                  val targetChurchId = member?.churchId?.takeIf { it.isNotBlank() }
-                  ?: userProfile?.churchId?.takeIf { it.isNotBlank() }
-                  ?: sessionState.activeChurchId
-                  val author = userProfile?.displayName ?: member?.effectiveFullName ?: "Admin"
+                onCreateAnnouncement = {
+                  title,
+                  content,
+                  department,
+                  category,
+                  date,
+                  targetAudience,
+                  isPinned,
+                  showToastOnLogin,
+                  toastAlertLevel,
+                  isScheduledNotification,
+                  scheduledNotificationDate,
+                  posterUrl,
+                  serviceId ->
                   viewModel.createAnnouncement(
-                    churchId = targetChurchId,
+                    churchId = resolvedChurchId,
                     title = title,
                     content = content,
                     isPinned = isPinned,
-                    authorName = author,
+                    authorName = resolvedAuthorName,
+                    department = department,
+                    category = category,
+                    date = date,
+                    targetAudience = targetAudience,
+                    showToastOnLogin = showToastOnLogin,
+                    toastAlertLevel = toastAlertLevel,
+                    isScheduledNotification = isScheduledNotification,
+                    scheduledNotificationDate = scheduledNotificationDate,
                     posterUrl = posterUrl,
+                    serviceId = serviceId,
                   )
                 },
                 onCreateService = { title, description, dateFormatted, lateToleranceMinutes, isOpenForAttendance, isLive, category, date, startTime, endTime, theme, passage, leader, preacher, reader, musicians, ushers, sendReminder24h, imageUrl ->
-                  val targetChurchId = member?.churchId?.takeIf { it.isNotBlank() }
-                  ?: userProfile?.churchId?.takeIf { it.isNotBlank() }
-                  ?: sessionState.activeChurchId
-                  val churchName = member?.churchName ?: userProfile?.churchName ?: "OmniChurch Pro"
-                  val author = userProfile?.displayName ?: member?.effectiveFullName ?: "Admin"
                   viewModel.createService(
-                    churchId = targetChurchId,
-                    churchName = churchName,
+                    churchId = resolvedChurchId,
+                    churchName = resolvedChurchName,
                     title = title,
                     description = description,
                     dateFormatted = dateFormatted,
@@ -448,18 +591,16 @@ private fun AuthenticatedOmniChurchWorkspace(
                     ushers = ushers,
                     sendReminder24h = sendReminder24h,
                     imageUrl = imageUrl,
-                    authorName = author,
+                    authorName = resolvedAuthorName,
                   )
                 },
                 reactionSummaries = reactionSummaries,
+                commentCounts = commentCounts,
                 onReactToComment = { commentId, reactionType ->
-                  val targetChurchId = member?.churchId?.takeIf { it.isNotBlank() }
-                  ?: userProfile?.churchId?.takeIf { it.isNotBlank() }
-                  ?: sessionState.activeChurchId
                   viewModel.reactToFeedItem(
                     targetId = commentId,
                     isServiceTarget = false,
-                    churchId = targetChurchId,
+                    churchId = resolvedChurchId,
                     reactionType = OmniReactionType.fromKey(reactionType),
                     isCommentTarget = true,
                   )
@@ -469,6 +610,8 @@ private fun AuthenticatedOmniChurchWorkspace(
                   viewModel.deleteAnnouncement(announcementId)
                 },
                 isAdminSession = isAdminSession,
+                canCreateService = isAdminSession,
+                canEditService = isAdminSession,
                 onUpdateService = { existingService, title, description, dateFormatted, lateToleranceMinutes, isOpenForAttendance, category, date, startTime, endTime, theme, passage, leader, preacher, reader, musicians, ushers, sendReminder24h, imageUrl ->
                   viewModel.updateService(
                     serviceId = existingService.id,
@@ -477,6 +620,7 @@ private fun AuthenticatedOmniChurchWorkspace(
                     dateFormatted = dateFormatted,
                     lateToleranceMinutes = lateToleranceMinutes,
                     isOpenForAttendance = isOpenForAttendance,
+                    isLive = existingService.isLive,
                     category = category,
                     date = date,
                     startTime = startTime,
@@ -492,6 +636,10 @@ private fun AuthenticatedOmniChurchWorkspace(
                     imageUrl = imageUrl,
                   )
                 },
+                churchMembers = churchMembers,
+                activeChurchName = resolvedChurchName,
+                activeChurchLogoUrl = resolvedChurchLogoUrl,
+                currentLanguageCode = currentLanguageCode,
               )
             }
 
@@ -508,14 +656,9 @@ private fun AuthenticatedOmniChurchWorkspace(
                 userProfile = userProfile,
                 servicesState = servicesState,
                 onCreateService = { title, description, dateFormatted, lateToleranceMinutes, isOpenForAttendance, isLive, category, date, startTime, endTime, theme, passage, leader, preacher, reader, musicians, ushers, sendReminder24h, imageUrl ->
-                  val targetChurchId = member?.churchId?.takeIf { it.isNotBlank() }
-                  ?: userProfile?.churchId?.takeIf { it.isNotBlank() }
-                  ?: sessionState.activeChurchId
-                  val churchName = member?.churchName ?: userProfile?.churchName ?: "OmniChurch Pro"
-                  val author = userProfile?.displayName ?: member?.effectiveFullName ?: "Admin"
                   viewModel.createService(
-                    churchId = targetChurchId,
-                    churchName = churchName,
+                    churchId = resolvedChurchId,
+                    churchName = resolvedChurchName,
                     title = title,
                     description = description,
                     dateFormatted = dateFormatted,
@@ -535,17 +678,14 @@ private fun AuthenticatedOmniChurchWorkspace(
                     ushers = ushers,
                     sendReminder24h = sendReminder24h,
                     imageUrl = imageUrl,
-                    authorName = author,
+                    authorName = resolvedAuthorName,
                   )
                 },
                 onToggleAttendanceWindow = { service, isOpen ->
                   viewModel.toggleServiceAttendanceWindow(service, isOpen)
                 },
                 observeAttendances = { serviceId ->
-                  val targetChurchId = member?.churchId?.takeIf { it.isNotBlank() }
-                  ?: userProfile?.churchId?.takeIf { it.isNotBlank() }
-                  ?: sessionState.activeChurchId
-                  viewModel.observeAttendancesForService(targetChurchId, serviceId)
+                  viewModel.observeAttendancesForService(resolvedChurchId, serviceId)
                 },
                 onOpenScannerForService = { serviceId ->
                   viewModel.selectScannerService(serviceId)
@@ -553,6 +693,61 @@ private fun AuthenticatedOmniChurchWorkspace(
                 },
                 onBackClick = { navController.popBackStack() },
                 onDeleteService = { serviceId -> viewModel.deleteService(serviceId) },
+                isAdminSession = isAdminSession,
+                canCreateService = isAdminSession,
+                canEditService = isAdminSession,
+                onUpdateService = { existingService, title, description, dateFormatted, lateToleranceMinutes, isOpenForAttendance, category, date, startTime, endTime, theme, passage, leader, preacher, reader, musicians, ushers, sendReminder24h, imageUrl ->
+                  viewModel.updateService(
+                    serviceId = existingService.id,
+                    title = title,
+                    description = description,
+                    dateFormatted = dateFormatted,
+                    lateToleranceMinutes = lateToleranceMinutes,
+                    isOpenForAttendance = isOpenForAttendance,
+                    isLive = existingService.isLive,
+                    category = category,
+                    date = date,
+                    startTime = startTime,
+                    endTime = endTime,
+                    theme = theme,
+                    passage = passage,
+                    leader = leader,
+                    preacher = preacher,
+                    reader = reader,
+                    musicians = musicians,
+                    ushers = ushers,
+                    sendReminder24h = sendReminder24h,
+                    imageUrl = imageUrl,
+                  )
+                },
+                reactionSummaries = reactionSummaries,
+                commentCounts = commentCounts,
+                onReactToService = { serviceId, reactionType ->
+                  viewModel.reactToFeedItem(
+                    targetId = serviceId,
+                    isServiceTarget = true,
+                    churchId = resolvedChurchId,
+                    reactionType = OmniReactionType.fromKey(reactionType),
+                  )
+                },
+                observeComments = { targetId ->
+                  viewModel.observeCommentsForTarget(resolvedChurchId, targetId)
+                },
+                onPostComment = { serviceId, content ->
+                  viewModel.postComment(serviceId, true, content)
+                },
+                onReactToComment = { commentId, reactionType ->
+                  viewModel.reactToFeedItem(
+                    targetId = commentId,
+                    isServiceTarget = false,
+                    churchId = resolvedChurchId,
+                    reactionType = OmniReactionType.fromKey(reactionType),
+                    isCommentTarget = true,
+                  )
+                },
+                churchMembers = churchMembers,
+                activeChurchLogoUrl = resolvedChurchLogoUrl,
+                currentLanguageCode = currentLanguageCode,
               )
             }
 
@@ -582,6 +777,11 @@ private fun AuthenticatedOmniChurchWorkspace(
                 member = member,
                 qrBitmap = memberQrBitmap,
                 attendanceHistory = memberAttendanceHistory,
+                effectiveVerificationBaseUrl = verificationConfig.effectiveVerificationBaseUrl,
+                onOpenVerificationCertificate = { targetMember ->
+                  viewModel.openDirectMemberVerification(targetMember, activeChurch)
+                  navController.navigate(OmniRoutes.MEMBER_VERIFICATION)
+                },
                 onClose = { navController.popBackStack() },
               )
             }
@@ -589,7 +789,7 @@ private fun AuthenticatedOmniChurchWorkspace(
             composable(OmniRoutes.ADMIN_QR_SCANNER) {
               val effectiveProfile = userProfile ?: UserProfile(
                 role = if (isAdminSession) "admin" else "usher",
-                churchId = member?.churchId ?: userProfile?.churchId.orEmpty().ifBlank { sessionState.activeChurchId }
+                churchId = resolvedChurchId,
               )
               AdminQRScannerScreen(
                 userProfile = effectiveProfile,
@@ -597,6 +797,11 @@ private fun AuthenticatedOmniChurchWorkspace(
                 selectedServiceId = selectedScannerServiceId,
                 validationOutcome = scannerOutcome,
                 churchMembers = churchMembers,
+                allServices = availableServicesList,
+                currentLanguageCode = currentLanguageCode,
+                observeServiceAttendances = { serviceId ->
+                  viewModel.observeAttendancesForService(resolvedChurchId, serviceId)
+                },
                 onSelectService = { serviceId -> viewModel.selectScannerService(serviceId) },
                 onScanOrSubmitCode = { rawTokenOrCode, service, method ->
                   viewModel.processAttendanceScanOrCode(rawTokenOrCode, service, method)
@@ -608,9 +813,31 @@ private fun AuthenticatedOmniChurchWorkspace(
                     onSuccess = onLinked,
                   )
                 },
+                onVerifyCard = { rawTokenOrCode ->
+                  viewModel.verifyMemberCard(rawTokenOrCode, resolvedChurchId)
+                  navController.navigate(OmniRoutes.MEMBER_VERIFICATION)
+                },
+                onOpenMemberVerification = { targetMember ->
+                  viewModel.openDirectMemberVerification(targetMember, activeChurch)
+                  navController.navigate(OmniRoutes.MEMBER_VERIFICATION)
+                },
                 onResetOutcome = { viewModel.resetScannerOutcome() },
                 onOpenServicesManagement = { navController.navigate(OmniRoutes.SERVICES) },
                 onBackClick = { navController.popBackStack() },
+              )
+            }
+
+            composable(OmniRoutes.MEMBER_VERIFICATION) {
+              MemberPublicVerificationScreen(
+                verificationState = cardVerificationState,
+                verificationConfig = verificationConfig,
+                isChurchLicensed = { cId, cCode -> adMobController.isChurchLicensed(cId, cCode) },
+                initialLanguageCode = currentLanguageCode,
+                onRetry = { viewModel.retryLastCardVerification() },
+                onClose = {
+                  viewModel.clearCardVerificationState()
+                  navController.popBackStack()
+                },
               )
             }
 
@@ -619,6 +846,8 @@ private fun AuthenticatedOmniChurchWorkspace(
                 userProfile = userProfile,
                 isAdminSession = isAdminSession,
                 churchMembers = churchMembers,
+                churchMembersUiState = churchMembersUiState,
+                onRetryLoadMembers = { viewModel.retryLoadChurchMembers() },
                 onBackClick = { navController.popBackStack() },
                 onAdminUpdateMember = { memberDocId, fullName, department, ministryRole, phone, titlePrefix ->
                   viewModel.updateChurchMemberByAdmin(
@@ -631,7 +860,7 @@ private fun AuthenticatedOmniChurchWorkspace(
                   )
                 },
                 onRegisterNewMember = { fullName, customMatrikil, pin, phone, department, ministryRole ->
-                  val targetChurch = Church(id = sessionState.activeChurchId, name = member?.churchName ?: "OmniChurch Pro")
+                  val targetChurch = activeChurch ?: Church(id = resolvedChurchId, name = resolvedChurchName)
                   viewModel.registerNewMemberByAdmin(
                     church = targetChurch,
                     fullName = fullName,
@@ -657,6 +886,120 @@ private fun AuthenticatedOmniChurchWorkspace(
                 onMarkRead = { notifId -> viewModel.markNotificationAsRead(notifId) },
                 onMarkAllRead = { list -> viewModel.markAllNotificationsRead(list) },
                 onBackClick = { navController.popBackStack() },
+                isAdmin = isAdminSession,
+                canPublishAnnouncement = isAdminSession,
+                canEditAnnouncement = isAdminSession,
+                availableServices = availableServicesList,
+                onCreateAnnouncement =
+                  if (isAdminSession) {
+                    {
+                      title,
+                      content,
+                      department,
+                      category,
+                      date,
+                      targetAudience,
+                      isPinned,
+                      showToastOnLogin,
+                      toastAlertLevel,
+                      isScheduledNotification,
+                      scheduledNotificationDate,
+                      posterUrl,
+                      serviceId ->
+                      viewModel.createAnnouncement(
+                        churchId = resolvedChurchId,
+                        title = title,
+                        content = content,
+                        isPinned = isPinned,
+                        authorName = resolvedAuthorName,
+                        department = department,
+                        category = category,
+                        date = date,
+                        targetAudience = targetAudience,
+                        showToastOnLogin = showToastOnLogin,
+                        toastAlertLevel = toastAlertLevel,
+                        isScheduledNotification = isScheduledNotification,
+                        scheduledNotificationDate = scheduledNotificationDate,
+                        posterUrl = posterUrl,
+                        serviceId = serviceId,
+                      )
+                    }
+                  } else null,
+                onUpdateAnnouncement =
+                  if (isAdminSession) {
+                    {
+                      existingAnnouncement,
+                      title,
+                      content,
+                      department,
+                      category,
+                      date,
+                      targetAudience,
+                      isPinned,
+                      showToastOnLogin,
+                      toastAlertLevel,
+                      isScheduledNotification,
+                      scheduledNotificationDate,
+                      posterUrl,
+                      serviceId ->
+                      viewModel.updateAnnouncement(
+                        announcementId = existingAnnouncement.id,
+                        title = title,
+                        content = content,
+                        department = department,
+                        category = category,
+                        date = date,
+                        targetAudience = targetAudience,
+                        isPinned = isPinned,
+                        showToastOnLogin = showToastOnLogin,
+                        toastAlertLevel = toastAlertLevel,
+                        isScheduledNotification = isScheduledNotification,
+                        scheduledNotificationDate = scheduledNotificationDate,
+                        posterUrl = posterUrl,
+                        serviceId = serviceId,
+                      )
+                    }
+                  } else null,
+                announcementsState = announcementsState,
+                unreadAnnouncementIds = unreadAnnouncementIds,
+                onMarkAnnouncementRead = { announcementId ->
+                  viewModel.markAnnouncementAsRead(announcementId)
+                },
+                onMarkAllAnnouncementsRead = {
+                  viewModel.markAllAnnouncementsAsRead()
+                },
+                onRetryLoadAnnouncements = {
+                  viewModel.retryLoadAnnouncements()
+                },
+                currentLanguageCode = currentLanguageCode,
+                reactionSummaries = reactionSummaries,
+                commentCounts = commentCounts,
+                onReactToAnnouncement = { announcementId, reactionType ->
+                  viewModel.reactToFeedItem(
+                    targetId = announcementId,
+                    isServiceTarget = false,
+                    churchId = resolvedChurchId,
+                    reactionType = OmniReactionType.fromKey(reactionType),
+                  )
+                },
+                observeComments = { targetId ->
+                  viewModel.observeCommentsForTarget(resolvedChurchId, targetId)
+                },
+                onPostComment = { targetId, content ->
+                  viewModel.postComment(targetId, false, content)
+                },
+                onReactToComment = { commentId, reactionType ->
+                  viewModel.reactToFeedItem(
+                    targetId = commentId,
+                    isServiceTarget = false,
+                    churchId = resolvedChurchId,
+                    reactionType = OmniReactionType.fromKey(reactionType),
+                    isCommentTarget = true,
+                  )
+                },
+                onDeleteAnnouncement = { announcementId ->
+                  viewModel.deleteAnnouncement(announcementId)
+                },
               )
             }
 
@@ -689,7 +1032,7 @@ private fun AuthenticatedOmniChurchWorkspace(
                 onRegisterNewMember =
                   if (isAdminSession) {
                     { fullName, customMatrikil, pin, phone, department, ministryRole ->
-                      val targetChurch = Church(id = sessionState.activeChurchId, name = member?.churchName ?: "OmniChurch Pro")
+                      val targetChurch = activeChurch ?: Church(id = resolvedChurchId, name = resolvedChurchName)
                       viewModel.registerNewMemberByAdmin(
                         church = targetChurch,
                         fullName = fullName,
@@ -721,12 +1064,43 @@ private fun AuthenticatedOmniChurchWorkspace(
                       )
                     }
                   } else null,
+                activeChurch = activeChurch,
+                isAdminSession = isAdminSession,
+                isAdminSecurityBusy = adminAuthBusy,
+                onSaveChurchSecuritySettings =
+                  if (isAdminSession && activeChurch != null) {
+                    { quickPinEnabled, newPinOrNull, autoLockMinutes ->
+                      adminAuthViewModel.updateSecuritySettings(
+                        church = activeChurch!!,
+                        quickPinEnabled = quickPinEnabled,
+                        newPinOrNull = newPinOrNull,
+                        autoLockMinutes = autoLockMinutes,
+                        languageCode = currentLanguageCode,
+                        onSuccess = {
+                          viewModel.setFeedbackMessage(
+                            when (currentLanguageCode.lowercase()) {
+                              "fr" -> "Paramètres de sécurité enregistrés !"
+                              "en" -> "Security settings saved!"
+                              "es" -> "¡Configuración de seguridad guardada!"
+                              else -> "Paramèt sekirite ak PIN rapid yo anrejistre!"
+                            }
+                          )
+                        },
+                        onError = { err -> viewModel.setFeedbackMessage(err) },
+                      )
+                    }
+                  } else null,
+                onLockAdminNow =
+                  if (isAdminSession && activeChurch != null) {
+                    { adminAuthViewModel.lockChurchNow(activeChurch!!.id) }
+                  } else null,
               )
             }
           }
 
           val showBottomBar =
-            currentRoute in
+            !isAdminLocked &&
+              currentRoute in
               setOf(
                 OmniRoutes.HOME,
                 OmniRoutes.SERVICES,
@@ -773,6 +1147,79 @@ private fun AuthenticatedOmniChurchWorkspace(
                 }
               },
               modifier = Modifier.align(Alignment.BottomCenter),
+            )
+          }
+
+          if (isAdminSession && !isAdminLocked && autoLockWarningSeconds != null && activeChurch != null) {
+            AutoLockWarningDialog(
+              secondsRemaining = autoLockWarningSeconds!!,
+              currentLanguageCode = currentLanguageCode,
+              onStayActive = { adminAuthViewModel.recordUserInteraction() },
+              onLockNow = { adminAuthViewModel.lockChurchNow(activeChurch!!.id) },
+            )
+          }
+
+          if (isAdminLocked && activeChurch != null) {
+            BlockingAdminAuthGateOverlay(
+              church = activeChurch!!,
+              firebaseUser = adminFirebaseUser,
+              isBusy = adminAuthBusy,
+              errorMessage = adminAuthError,
+              infoMessage = adminAuthInfo,
+              legacyVerifiedChurchId = legacyVerifiedChurchId,
+              legacyVerifiedPin = legacyVerifiedPin,
+              currentLanguageCode = currentLanguageCode,
+              onClearMessages = { adminAuthViewModel.clearMessages() },
+              onSignInEmailPassword = { email, password ->
+                adminAuthViewModel.signInAdminWithEmailPassword(
+                  church = activeChurch,
+                  email = email,
+                  password = password,
+                  languageCode = currentLanguageCode,
+                  onSuccess = {},
+                )
+              },
+              onSendPasswordReset = { email ->
+                adminAuthViewModel.sendPasswordResetEmail(email, currentLanguageCode)
+              },
+              onGoogleVerified = {
+                adminAuthViewModel.verifySignedInAdminGoogleAccount(
+                  church = activeChurch,
+                  languageCode = currentLanguageCode,
+                  onSuccess = {},
+                )
+              },
+              onQuickPinSubmit = { enteredPin ->
+                adminAuthViewModel.unlockWithQuickPin(
+                  church = activeChurch,
+                  pin = enteredPin,
+                  languageCode = currentLanguageCode,
+                  onSuccess = {},
+                )
+              },
+              onBiometricSuccess = {
+                adminAuthViewModel.authorizeViaBiometric(
+                  church = activeChurch,
+                  languageCode = currentLanguageCode,
+                  onSuccess = {},
+                )
+              },
+              onVerifyLegacyPin = { pin ->
+                adminAuthViewModel.verifyLegacyPinStep(activeChurch, pin, currentLanguageCode)
+              },
+              onCompleteLegacyMigration = { email, newPass, confirmPass ->
+                adminAuthViewModel.completeLegacyMigration(
+                  church = activeChurch,
+                  adminEmail = email,
+                  newPassword = newPass,
+                  confirmPassword = confirmPass,
+                  languageCode = currentLanguageCode,
+                  onSuccess = {},
+                )
+              },
+              onResetLegacyMigration = { adminAuthViewModel.resetLegacyMigrationStep() },
+              onLocalError = { msg -> adminAuthViewModel.setAuthError(msg) },
+              onExitToAuthPortal = performFullSignOut,
             )
           }
         }

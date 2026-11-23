@@ -7,6 +7,8 @@ import com.google.firebase.auth.auth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.snapshots
 import com.zoutiw.omnichurch.core.network.FirestoreProvider
 import com.zoutiw.omnichurch.core.network.OperationType
@@ -21,12 +23,16 @@ import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 class ChurchRepository(
@@ -38,27 +44,97 @@ class ChurchRepository(
 
   fun getChurchesFlow(): Flow<List<Church>> = observeChurches()
 
-  fun observeChurches(): Flow<List<Church>> = flow {
+  fun observeChurchesResult(): Flow<Result<List<Church>>> = channelFlow {
     val path = "churches"
-    emitAll(
-      db.collection("churches")
-        .snapshots()
-        .map { snapshot ->
-          snapshot.documents
+    var hasEmittedConfirmedOrNonEmpty = false
+
+    val serverWarmupJob = launch {
+      try {
+        val serverSnap = db.collection("churches").get(Source.SERVER).awaitSafe()
+        val serverChurches =
+          serverSnap.documents
             .mapNotNull { it.toChurch() }
-            .sortedBy { it.name.lowercase() }
+            .sortedBy { it.name.lowercase(Locale.getDefault()) }
+        hasEmittedConfirmedOrNonEmpty = true
+        trySend(Result.success(serverChurches))
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        handleFirestoreError(e, OperationType.LIST, path)
+        Log.w("ChurchRepository", "Server warm-up fetch for churches failed: ${e.message}")
+        val cachedChurches =
+          runCatching {
+            db.collection("churches")
+              .get(Source.CACHE)
+              .awaitSafe()
+              .documents
+              .mapNotNull { it.toChurch() }
+              .sortedBy { it.name.lowercase(Locale.getDefault()) }
+          }.getOrDefault(emptyList())
+        if (cachedChurches.isNotEmpty()) {
+          hasEmittedConfirmedOrNonEmpty = true
+          trySend(Result.success(cachedChurches))
+        } else if (!hasEmittedConfirmedOrNonEmpty) {
+          trySend(Result.failure(e))
         }
-        .catch { error ->
-          handleFirestoreError(error, OperationType.LIST, path)
-          emit(emptyList())
+      }
+    }
+
+    var attempt = 0
+    try {
+      while (currentCoroutineContext().isActive) {
+        try {
+          db.collection("churches")
+            .snapshots()
+            .collect { snapshot ->
+              val mapped =
+                snapshot.documents
+                  .mapNotNull { it.toChurch() }
+                  .sortedBy { it.name.lowercase(Locale.getDefault()) }
+              // Avoid replacing Loading with an empty local offline cache before server responds.
+              if (snapshot.metadata.isFromCache && mapped.isEmpty() && !hasEmittedConfirmedOrNonEmpty) {
+                return@collect
+              }
+              attempt = 0
+              hasEmittedConfirmedOrNonEmpty = true
+              trySend(Result.success(mapped))
+            }
+          break
+        } catch (e: CancellationException) {
+          throw e
+        } catch (e: Exception) {
+          handleFirestoreError(e, OperationType.LIST, path)
+          if (!hasEmittedConfirmedOrNonEmpty) {
+            trySend(Result.failure(e))
+          }
+          val isPermissionError =
+            (e as? FirebaseFirestoreException)?.code == FirebaseFirestoreException.Code.PERMISSION_DENIED
+          if (isPermissionError) {
+            break
+          }
+          attempt += 1
+          delay((1500L * attempt).coerceAtMost(8000L))
         }
-    )
+      }
+    } finally {
+      serverWarmupJob.cancel()
+    }
   }
+
+  fun observeChurches(): Flow<List<Church>> =
+    observeChurchesResult().map { it.getOrDefault(emptyList()) }
 
   suspend fun fetchAllChurches(): List<Church> {
     return try {
-      val snap = db.collection("churches").get().awaitSafe()
-      snap.documents.mapNotNull { it.toChurch() }.sortedBy { it.name.lowercase() }
+      val snap =
+        try {
+          db.collection("churches").get(Source.SERVER).awaitSafe()
+        } catch (e: CancellationException) {
+          throw e
+        } catch (_: Exception) {
+          db.collection("churches").get().awaitSafe()
+        }
+      snap.documents.mapNotNull { it.toChurch() }.sortedBy { it.name.lowercase(Locale.getDefault()) }
     } catch (e: CancellationException) {
       currentCoroutineContext().ensureActive()
       emptyList()
@@ -112,7 +188,13 @@ class ChurchRepository(
     return try {
       val targetChurch: Church
       if (createNewChurch) {
+        val adminUser =
+          FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "kreye yon nouvo legliz")
+            .getOrElse { return Result.failure(it) }
         val churchRef = db.collection("churches").document()
+        if (!FirestorePayloadSanitizer.isValidChurchId(churchRef.id)) {
+          return Result.failure(IllegalArgumentException("ID legliz la pa valid."))
+        }
         val cleanChurchName = churchNameInput.trim().ifBlank { "OmniChurch Pro" }
         val generatedCode =
           churchCodeInput.trim().uppercase().ifBlank {
@@ -126,23 +208,30 @@ class ChurchRepository(
           } else {
             null
           }
-        val adminEmail = currentUser?.email?.trim()?.takeIf { it.isNotEmpty() }
-        val adminGoogleUid = currentUser?.uid?.trim()?.takeIf { it.isNotEmpty() }
+        val adminEmail = adminUser.email?.trim()?.lowercase(Locale.US)?.takeIf { it.isNotEmpty() }
+        val adminGoogleUid = adminUser.uid.trim()
 
-        val churchPayload =
-          filterNonNullMap(
+        val rawChurchPayload =
+          hashMapOf<String, Any?>(
             "id" to churchRef.id,
             "name" to cleanChurchName,
             "code" to generatedCode,
             "address" to churchAddressInput.trim(),
-            "ownerId" to actorUid,
+            "ownerId" to adminGoogleUid,
             "adminGoogleEmail" to adminEmail,
             "adminGoogleUid" to adminGoogleUid,
-            "adminGoogleName" to currentUser?.displayName,
+            "adminGoogleName" to adminUser.displayName,
             "adminPasscode" to passcodeDigest,
-            "adminAuthMethod" to if (adminEmail != null && passcodeDigest != null) "both" else if (adminEmail != null) "google" else "legacy_pin",
+            "adminAuthMethod" to if (adminEmail != null && passcodeDigest != null) "both" else if (adminEmail != null) "google" else "email_password",
+            "status" to "active",
             "createdAt" to FieldValue.serverTimestamp(),
             "updatedAt" to FieldValue.serverTimestamp(),
+          )
+        val churchPayload =
+          FirestorePayloadSanitizer.sanitizeChurchCreate(
+            raw = rawChurchPayload,
+            docId = churchRef.id,
+            currentUser = adminUser,
           )
         churchRef.set(churchPayload).await()
         targetChurch =
@@ -151,7 +240,7 @@ class ChurchRepository(
             code = generatedCode,
             name = cleanChurchName,
             address = churchAddressInput.trim(),
-            ownerId = actorUid,
+            ownerId = adminGoogleUid,
             adminGoogleEmail = adminEmail.orEmpty(),
             adminGoogleUid = adminGoogleUid,
             adminPasscode = passcodeDigest.orEmpty(),
@@ -179,8 +268,9 @@ class ChurchRepository(
         "OMNICHURCH_${targetChurch.id}_${memberRef.id}_${UUID.randomUUID().toString().take(8).uppercase()}"
       val joinDateFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
 
-      val memberPayload =
-        filterNonNullMap(
+      val rawMemberPayload =
+        hashMapOf<String, Any?>(
+          "id" to memberRef.id,
           "userId" to actorUid,
           "churchId" to targetChurch.id,
           "churchName" to targetChurch.name,
@@ -191,7 +281,7 @@ class ChurchRepository(
           "email" to currentUser?.email?.trim()?.takeIf { it.isNotEmpty() },
           "pin" to cleanPin,
           "securityPin" to cleanPin,
-          "googleEmail" to currentUser?.email?.trim()?.takeIf { it.isNotEmpty() },
+          "googleEmail" to currentUser?.email?.trim()?.lowercase(Locale.US)?.takeIf { it.isNotEmpty() },
           "googleUid" to currentUser?.uid?.trim()?.takeIf { it.isNotEmpty() },
           "photoUrl" to photoUrl?.trim()?.takeIf { it.isNotEmpty() },
           "department" to cleanDepartment,
@@ -199,8 +289,15 @@ class ChurchRepository(
           "status" to "active",
           "barcodeToken" to barcodeToken,
           "joinDateFormatted" to joinDateFormatted,
+          "createdBy" to currentUser?.uid?.trim()?.takeIf { it.isNotEmpty() },
+          "updatedBy" to currentUser?.uid?.trim()?.takeIf { it.isNotEmpty() },
           "createdAt" to FieldValue.serverTimestamp(),
           "updatedAt" to FieldValue.serverTimestamp(),
+        )
+      val memberPayload =
+        FirestorePayloadSanitizer.sanitizeMemberCreate(
+          raw = rawMemberPayload,
+          docId = memberRef.id,
         )
       memberRef.set(memberPayload).await()
 

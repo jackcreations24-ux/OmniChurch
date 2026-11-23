@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,9 +36,12 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -72,6 +76,7 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.zoutiw.omnichurch.R
 import com.zoutiw.omnichurch.core.utilities.BiometricQuickUnlockHelper
+import com.zoutiw.omnichurch.core.utilities.RememberedAdminCredentials
 import com.zoutiw.omnichurch.core.utilities.findActivity
 import com.zoutiw.omnichurch.data.models.Church
 import com.zoutiw.omnichurch.data.models.OmniAuthEvaluator
@@ -80,10 +85,13 @@ import com.zoutiw.omnichurch.presentation.components.GlassButton
 import com.zoutiw.omnichurch.presentation.components.GlassInputField
 import com.zoutiw.omnichurch.presentation.components.GlassModalBottomSheet
 import com.zoutiw.omnichurch.presentation.components.GlassSegmentedControl
-import com.zoutiw.omnichurch.presentation.components.OmniChurchBrandHeader
+import com.zoutiw.omnichurch.presentation.components.LogoVariant
+import com.zoutiw.omnichurch.presentation.components.OmniChurchLogo
+import com.zoutiw.omnichurch.presentation.components.OmniChurchProBadge
 import com.zoutiw.omnichurch.presentation.components.OmniChurchSanctuaryHeroCanvas
 import com.zoutiw.omnichurch.presentation.components.Premium3DGoogleIconButton
 import com.zoutiw.omnichurch.presentation.components.PremiumGlassCard
+import com.zoutiw.omnichurch.presentation.viewmodels.UiState
 import com.zoutiw.omnichurch.ui.theme.BlueNeon
 import com.zoutiw.omnichurch.ui.theme.BrandGold
 import com.zoutiw.omnichurch.ui.theme.BrandOrange
@@ -221,6 +229,8 @@ fun signOutOmniChurch(
 @Composable
 fun OmniChurchAuthPortalScreen(
   churches: List<Church>,
+  churchesUiState: UiState<List<Church>> = UiState.Success(churches),
+  onRetryLoadChurches: () -> Unit = {},
   sessionState: OmniSessionState,
   isAuthenticating: Boolean,
   errorFeedback: String?,
@@ -250,6 +260,19 @@ fun OmniChurchAuthPortalScreen(
     email: String,
     password: String,
   ) -> Unit = { _, _, _ -> },
+  rememberedAdminCredentials: RememberedAdminCredentials = RememberedAdminCredentials(),
+  pendingAdminOwnedChurches: List<Church> = emptyList(),
+  onToggleRememberAdmin: (Boolean) -> Unit = {},
+  onLoginAdminSmartWithEmailAndPassword: (
+    email: String,
+    password: String,
+    rememberMe: Boolean,
+  ) -> Unit = { email, password, _ ->
+    onLoginAdminWithEmailAndPassword(null, email, password)
+  },
+  onLoginAdminSmartWithGoogle: () -> Unit = {},
+  onSelectOwnedAdminChurch: (Church) -> Unit = {},
+  onCancelOwnedAdminChurchSelection: () -> Unit = {},
   onSendAdminPasswordReset: (
     email: String,
     onSent: (String) -> Unit,
@@ -272,12 +295,21 @@ fun OmniChurchAuthPortalScreen(
   var matrikilOrPhoneInput by remember { mutableStateOf("") }
   var memberPinInput by remember { mutableStateOf("") }
 
-  var adminEmailInput by remember { mutableStateOf("") }
-  var adminPasswordInput by remember { mutableStateOf("") }
+  var adminEmailInput by remember { mutableStateOf(rememberedAdminCredentials.email) }
+  var adminPasswordInput by remember { mutableStateOf(rememberedAdminCredentials.password) }
+  var rememberAdminMe by remember { mutableStateOf(rememberedAdminCredentials.rememberEnabled) }
+  var hasPrefilledAdminCreds by remember {
+    mutableStateOf(
+      rememberedAdminCredentials.email.isNotBlank() ||
+        rememberedAdminCredentials.password.isNotBlank()
+    )
+  }
+  var hasUserEditedAdminCreds by remember { mutableStateOf(false) }
   var isAdminPasswordVisible by remember { mutableStateOf(false) }
 
   var adminPasscodeInput by remember { mutableStateOf("") }
   var isAdminPasscodeVisible by remember { mutableStateOf(false) }
+  var showLegacyAdminCodeFallback by remember { mutableStateOf(false) }
   var adminGooglePayload by remember { mutableStateOf<GoogleAccountPayload?>(null) }
 
   var pendingGoogleLinkPayload by remember { mutableStateOf<GoogleAccountPayload?>(null) }
@@ -287,6 +319,54 @@ fun OmniChurchAuthPortalScreen(
   var localError by remember { mutableStateOf<String?>(null) }
   var resetFeedbackMessage by remember { mutableStateOf<String?>(null) }
   val displayedError = localError ?: errorFeedback
+
+  val normalizedLang = currentLanguageCode.lowercase()
+  val rememberMeLabel =
+    when (normalizedLang) {
+      "fr" -> "Se souvenir de moi"
+      "en" -> "Remember me"
+      "es" -> "Recordarme"
+      else -> "Sonje mwen"
+    }
+  val forgotPasswordLabel =
+    when (normalizedLang) {
+      "fr" -> "Mot de passe oublié ?"
+      "en" -> "Forgot password?"
+      "es" -> "¿Olvidaste tu contraseña?"
+      else -> "Bliye modpas?"
+    }
+  val autoChurchBadgeLabel =
+    when (normalizedLang) {
+      "fr" -> "Chargement automatique de votre église • Données isolées"
+      "en" -> "Auto-loads your church • Isolated tenant data"
+      "es" -> "Carga automática de tu iglesia • Datos aislados"
+      else -> "Chajman otomatik legliz pa ou • Done 100% izole"
+    }
+  val ownedChurchesSheetTitle =
+    when (normalizedLang) {
+      "fr" -> "Choisissez votre église"
+      "en" -> "Select Your Church"
+      "es" -> "Selecciona tu iglesia"
+      else -> "Chwazi Legliz Pa Ou"
+    }
+  val ownedChurchesSheetSubtitle =
+    when (normalizedLang) {
+      "fr" -> "Votre compte gère plusieurs églises. Sélectionnez celle que vous souhaitez ouvrir :"
+      "en" -> "Your account manages multiple churches. Select the one you want to open:"
+      "es" -> "Tu cuenta administra varias iglesias. Selecciona la que deseas abrir:"
+      else -> "Kont ou a jere plizyè legliz. Chwazi legliz ou vle ouvri kounye a :"
+    }
+
+  LaunchedEffect(rememberedAdminCredentials) {
+    rememberAdminMe = rememberedAdminCredentials.rememberEnabled
+    if (!hasUserEditedAdminCreds && !hasPrefilledAdminCreds) {
+      if (rememberedAdminCredentials.email.isNotBlank() || rememberedAdminCredentials.password.isNotBlank()) {
+        adminEmailInput = rememberedAdminCredentials.email
+        adminPasswordInput = rememberedAdminCredentials.password
+        hasPrefilledAdminCreds = true
+      }
+    }
+  }
 
   LaunchedEffect(churches) {
     if (selectedChurchId == null && churches.size == 1) {
@@ -323,24 +403,13 @@ fun OmniChurchAuthPortalScreen(
           .padding(horizontal = 20.dp, vertical = 14.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-      OmniChurchBrandHeader(
-        badgeText = "Mobile",
-        isProStyle = false,
+      OmniChurchLogo(
+        variant = LogoVariant.Full,
+        modifier = Modifier.height(112.dp),
+        contentDescription = "OmniChurch PRO Official Logo",
       )
       Spacer(modifier = Modifier.height(6.dp))
-      Box(
-        modifier =
-          Modifier.clip(RoundedCornerShape(50))
-            .background(Brush.horizontalGradient(listOf(BrandOrange, BrandGold, BrandOrange)))
-            .padding(horizontal = 16.dp, vertical = 3.dp)
-      ) {
-        Text(
-          text = "PRO MOBILE",
-          style = MaterialTheme.typography.labelMedium,
-          color = DeepNavy,
-          fontWeight = FontWeight.Bold,
-        )
-      }
+      OmniChurchProBadge(label = "PRO")
 
       Row(
         modifier =
@@ -497,66 +566,121 @@ fun OmniChurchAuthPortalScreen(
               } else if (isAdminEmailMode) {
                 "Konekte ak imèl ak modpas kont legliz la pou jere manm yo, sèvis yo ak prezans yo."
               } else {
-                "Konekte avèk Kòd Sekirite Administratè legliz la oswa Kont Google Administratè ki otorize a."
+                when (normalizedLang) {
+                  "fr" -> "Connectez-vous avec votre compte Google Administrateur pour ouvrir automatiquement votre église."
+                  "en" -> "Sign in with your authorized Admin Google account to automatically open your church."
+                  "es" -> "Inicia sesión con tu cuenta Google de administrador para abrir automáticamente tu iglesia."
+                  else -> "Konekte ak Kont Google Administratè ou pou ouvri legliz pa ou otomatikman."
+                }
               },
             style = MaterialTheme.typography.bodySmall,
             color = GlassWhite.copy(alpha = 0.85f),
             textAlign = TextAlign.Center,
           )
 
-          Box(
-            modifier =
-              Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(DeepNavy.copy(alpha = 0.78f))
-                .border(1.dp, BlueNeon.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
-                .clickable { showChurchSelectorSheet = true }
-                .padding(horizontal = 14.dp, vertical = 12.dp)
-                .testTag("church_selector_box"),
-          ) {
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.SpaceBetween,
+          val showPublicChurchSelector = isMemberMode || (!isAdminEmailMode && showLegacyAdminCodeFallback)
+          if (showPublicChurchSelector) {
+            Box(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .clip(RoundedCornerShape(16.dp))
+                  .background(DeepNavy.copy(alpha = 0.78f))
+                  .border(1.dp, BlueNeon.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+                  .clickable {
+                    if (churchesUiState is UiState.Error || (churchesUiState is UiState.Success && churches.isEmpty())) {
+                      onRetryLoadChurches()
+                    }
+                    showChurchSelectorSheet = true
+                  }
+                  .padding(horizontal = 14.dp, vertical = 12.dp)
+                  .testTag("church_selector_box"),
             ) {
               Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.SpaceBetween,
               ) {
-                Icon(
-                  imageVector = Icons.Default.AccountBalance,
-                  contentDescription = null,
-                  tint = BrandGold,
-                  modifier = Modifier.size(20.dp),
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
-                  Text(
-                    text = "Legliz Aktif",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MutedGlassText,
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.weight(1f),
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.AccountBalance,
+                    contentDescription = null,
+                    tint = BrandGold,
+                    modifier = Modifier.size(20.dp),
                   )
-                  Text(
-                    text =
-                      if (resolvedChurch != null) {
-                        "${resolvedChurch.name} (${resolvedChurch.effectiveCode})"
-                      } else if (churches.isEmpty()) {
-                        "Okenn legliz ankò • Klike pou kreye oswa chwazi"
-                      } else {
-                        "Chwazi legliz ou a (oswa tape Matrikil CH001-...)"
-                      },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (resolvedChurch != null) PureWhite else GlassWhite,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                  Spacer(modifier = Modifier.width(10.dp))
+                  Column {
+                    Text(
+                      text = "Legliz Aktif",
+                      style = MaterialTheme.typography.labelSmall,
+                      color = MutedGlassText,
+                    )
+                    val selectorSubtitle =
+                      when {
+                        resolvedChurch != null -> "${resolvedChurch.name} (${resolvedChurch.effectiveCode})"
+                        churchesUiState is UiState.Loading && churches.isEmpty() -> "Ap chaje lis legliz yo..."
+                        churchesUiState is UiState.Error && churches.isEmpty() -> "Erè chajman legliz • Klike pou rafrechi"
+                        churches.isEmpty() -> "Okenn legliz ankò • Klike pou rafrechi"
+                        else -> "Chwazi legliz ou a (${churches.size} disponib)"
+                      }
+                    Text(
+                      text = selectorSubtitle,
+                      style = MaterialTheme.typography.bodyMedium,
+                      color =
+                        when {
+                          resolvedChurch != null -> PureWhite
+                          churchesUiState is UiState.Error && churches.isEmpty() -> ErrorRed
+                          else -> GlassWhite
+                        },
+                      fontWeight = FontWeight.SemiBold,
+                      maxLines = 1,
+                      overflow = TextOverflow.Ellipsis,
+                    )
+                  }
+                }
+                if (churchesUiState is UiState.Loading && churches.isEmpty()) {
+                  CircularProgressIndicator(
+                    color = BlueNeon,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(20.dp),
+                  )
+                } else {
+                  Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Chwazi Legliz",
+                    tint = BlueNeon,
                   )
                 }
               }
+            }
+          } else {
+            Row(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .clip(RoundedCornerShape(14.dp))
+                  .background(DeepNavy.copy(alpha = 0.72f))
+                  .border(1.dp, SuccessGreen.copy(alpha = 0.38f), RoundedCornerShape(14.dp))
+                  .padding(horizontal = 12.dp, vertical = 9.dp)
+                  .testTag("admin_auto_church_badge"),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.Center,
+            ) {
               Icon(
-                imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = "Chwazi Legliz",
-                tint = BlueNeon,
+                imageVector = Icons.Default.VerifiedUser,
+                contentDescription = null,
+                tint = SuccessGreen,
+                modifier = Modifier.size(16.dp),
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = autoChurchBadgeLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = GlassWhite.copy(alpha = 0.92f),
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
               )
             }
           }
@@ -692,10 +816,11 @@ fun OmniChurchAuthPortalScreen(
           } else {
             GlassSegmentedControl(
               leftLabel = "Imèl + Modpas",
-              rightLabel = "Kòd / Google",
+              rightLabel = "Google Admin",
               isLeftSelected = isAdminEmailMode,
               onSelectLeft = {
                 isAdminEmailMode = true
+                showLegacyAdminCodeFallback = false
                 localError = null
                 resetFeedbackMessage = null
                 onClearFeedback()
@@ -707,7 +832,7 @@ fun OmniChurchAuthPortalScreen(
                 onClearFeedback()
               },
               leftIcon = Icons.Default.Email,
-              rightIcon = Icons.Default.Key,
+              rightIcon = Icons.Default.VerifiedUser,
               leftTestTag = "admin_mode_email_tab",
               rightTestTag = "admin_mode_code_tab",
             )
@@ -737,6 +862,7 @@ fun OmniChurchAuthPortalScreen(
                 value = adminEmailInput,
                 onValueChange = {
                   adminEmailInput = it
+                  hasUserEditedAdminCreds = true
                   localError = null
                   resetFeedbackMessage = null
                   onClearFeedback()
@@ -752,6 +878,7 @@ fun OmniChurchAuthPortalScreen(
                 value = adminPasswordInput,
                 onValueChange = {
                   adminPasswordInput = it
+                  hasUserEditedAdminCreds = true
                   localError = null
                   resetFeedbackMessage = null
                   onClearFeedback()
@@ -783,8 +910,47 @@ fun OmniChurchAuthPortalScreen(
 
               Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
               ) {
+                Row(
+                  modifier =
+                    Modifier.minimumInteractiveComponentSize()
+                      .clip(RoundedCornerShape(10.dp))
+                      .clickable(enabled = !isAuthenticating) {
+                        val next = !rememberAdminMe
+                        rememberAdminMe = next
+                        onToggleRememberAdmin(next)
+                      }
+                      .padding(end = 8.dp)
+                      .testTag("admin_remember_me_row"),
+                  verticalAlignment = Alignment.CenterVertically,
+                ) {
+                  Checkbox(
+                    checked = rememberAdminMe,
+                    onCheckedChange = { checked ->
+                      rememberAdminMe = checked
+                      onToggleRememberAdmin(checked)
+                    },
+                    enabled = !isAuthenticating,
+                    colors =
+                      CheckboxDefaults.colors(
+                        checkedColor = BrandGold,
+                        uncheckedColor = GlassWhite.copy(alpha = 0.65f),
+                        checkmarkColor = DeepNavy,
+                      ),
+                    modifier = Modifier.testTag("admin_remember_me_checkbox"),
+                  )
+                  Text(
+                    text = rememberMeLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = GlassWhite,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                  )
+                }
+
                 Box(
                   modifier =
                     Modifier.minimumInteractiveComponentSize()
@@ -804,10 +970,12 @@ fun OmniChurchAuthPortalScreen(
                   contentAlignment = Alignment.Center,
                 ) {
                   Text(
-                    text = "Bliye modpas?",
+                    text = forgotPasswordLabel,
                     style = MaterialTheme.typography.labelMedium,
                     color = BrandGold,
                     fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                   )
                 }
               }
@@ -830,11 +998,10 @@ fun OmniChurchAuthPortalScreen(
                     adminPasswordInput.isBlank() ->
                       localError = OmniAuthEvaluator.ERROR_EMPTY_PASSWORD
                     else -> {
-                      val targetChurchId = resolvedChurch?.id ?: selectedChurchId
-                      onLoginAdminWithEmailAndPassword(
-                        targetChurchId,
+                      onLoginAdminSmartWithEmailAndPassword(
                         cleanEmail,
                         adminPasswordInput,
+                        rememberAdminMe,
                       )
                     }
                   }
@@ -843,58 +1010,6 @@ fun OmniChurchAuthPortalScreen(
                 testTag = "admin_email_login_button",
               )
             } else {
-              GlassInputField(
-                value = adminPasscodeInput,
-                onValueChange = {
-                  adminPasscodeInput = it
-                  localError = null
-                  onClearFeedback()
-                },
-                label = "Kòd Sekirite Administratè Legliz la",
-                placeholder = "Antre Admin Passcode legliz la",
-                leadingIcon = Icons.Default.Lock,
-                trailingIcon = {
-                  IconButton(
-                    onClick = { isAdminPasscodeVisible = !isAdminPasscodeVisible },
-                    modifier = Modifier.testTag("admin_passcode_visibility_toggle"),
-                  ) {
-                    Icon(
-                      imageVector =
-                        if (isAdminPasscodeVisible) Icons.Default.VisibilityOff
-                        else Icons.Default.Visibility,
-                      contentDescription =
-                        if (isAdminPasscodeVisible) "Kache kòd la" else "Montre kòd la",
-                      tint = BlueNeon,
-                    )
-                  }
-                },
-                visualTransformation =
-                  if (isAdminPasscodeVisible) VisualTransformation.None
-                  else PasswordVisualTransformation(),
-                keyboardType = KeyboardType.Password,
-                testTag = "admin_passcode_input",
-              )
-
-              GlassButton(
-                text = "Antre nan Espas Administratè",
-                icon = Icons.Default.AdminPanelSettings,
-                isPrimaryNeon = true,
-                isLoading = isAuthenticating,
-                onClick = {
-                  localError = null
-                  onClearFeedback()
-                  val targetChurchId = resolvedChurch?.id ?: selectedChurchId.orEmpty()
-                  onLoginAdmin(
-                    targetChurchId,
-                    adminPasscodeInput,
-                    adminGooglePayload?.email,
-                    adminGooglePayload?.uid,
-                  )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                testTag = "admin_login_submit_button",
-              )
-
               if (adminGooglePayload != null) {
                 Row(
                   modifier =
@@ -920,36 +1035,168 @@ fun OmniChurchAuthPortalScreen(
                 }
               }
 
-              Spacer(modifier = Modifier.height(2.dp))
+              if (isAuthenticating) {
+                CircularProgressIndicator(
+                  color = BlueNeon,
+                  modifier = Modifier.size(36.dp),
+                )
+              } else {
+                Premium3DGoogleIconButton(
+                  caption =
+                    if (adminGooglePayload == null) "Google Admin"
+                    else "Chanje (${adminGooglePayload!!.email})",
+                  onClick = {
+                    localError = null
+                    onClearFeedback()
+                    launchOptionalGoogleSignIn(
+                      context = context,
+                      credentialManager = credentialManager,
+                      scope = scope,
+                      onSuccess = { payload ->
+                        adminGooglePayload = payload
+                        if (showLegacyAdminCodeFallback) {
+                          val targetChurchId = resolvedChurch?.id ?: selectedChurchId.orEmpty()
+                          if (targetChurchId.isNotBlank()) {
+                            onLoginAdmin(
+                              targetChurchId,
+                              adminPasscodeInput.takeIf { it.isNotBlank() },
+                              payload.email,
+                              payload.uid,
+                            )
+                          } else {
+                            onLoginAdminSmartWithGoogle()
+                          }
+                        } else {
+                          onLoginAdminSmartWithGoogle()
+                        }
+                      },
+                      onError = { msg -> localError = msg },
+                    )
+                  },
+                  testTag = "admin_google_verify_button",
+                )
+              }
 
-              Premium3DGoogleIconButton(
-                caption =
-                  if (adminGooglePayload == null) "Google Admin"
-                  else "Chanje (${adminGooglePayload!!.email})",
-                onClick = {
-                  localError = null
-                  onClearFeedback()
-                  launchOptionalGoogleSignIn(
-                    context = context,
-                    credentialManager = credentialManager,
-                    scope = scope,
-                    onSuccess = { payload ->
-                      adminGooglePayload = payload
-                      val targetChurchId = resolvedChurch?.id ?: selectedChurchId.orEmpty()
-                      if (targetChurchId.isNotBlank()) {
-                        onLoginAdmin(
-                          targetChurchId,
-                          adminPasscodeInput.takeIf { it.isNotBlank() },
-                          payload.email,
-                          payload.uid,
-                        )
+              // Explain Quick PIN's role as Fast Activity Resume after Auto-Lock
+              Row(
+                modifier =
+                  Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(DeepNavy.copy(alpha = 0.70f))
+                    .border(1.dp, BrandGold.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .testTag("admin_pin_resume_info_card"),
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Key,
+                  contentDescription = null,
+                  tint = BrandGold,
+                  modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                  text =
+                    when (normalizedLang) {
+                      "fr" -> "Le code PIN Admin sert à reprendre rapidement votre activité après la mise en pause automatique (Paramètres → Reprise Rapide)."
+                      "en" -> "Admin Quick PIN is used to rapidly resume activity after an auto-lock pause (configured in Settings → Quick Resume)."
+                      "es" -> "El PIN rápido de Admin sirve para reanudar tu actividad tras la pausa automática (Ajustes → Reanudación Rápida)."
+                      else -> "PIN Admin lan sèvi pou reprann aktivite w rapid apre tan de poz la (aktive li nan Paramèt → Reprann Aktivite Rapid)."
+                    },
+                  style = MaterialTheme.typography.labelSmall,
+                  color = GlassWhite.copy(alpha = 0.88f),
+                )
+              }
+
+              Box(
+                modifier =
+                  Modifier.minimumInteractiveComponentSize()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable {
+                      showLegacyAdminCodeFallback = !showLegacyAdminCodeFallback
+                      localError = null
+                      onClearFeedback()
+                    }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .testTag("toggle_legacy_admin_code_button"),
+                contentAlignment = Alignment.Center,
+              ) {
+                Text(
+                  text =
+                    if (showLegacyAdminCodeFallback) {
+                      when (normalizedLang) {
+                        "fr" -> "Masquer l'accès ancien code"
+                        "en" -> "Hide legacy church passcode"
+                        "es" -> "Ocultar acceso de código antiguo"
+                        else -> "Kache aksè ansyen kòd legliz la"
+                      }
+                    } else {
+                      when (normalizedLang) {
+                        "fr" -> "Ancien compte avec code d'église ?"
+                        "en" -> "Legacy account with church passcode?"
+                        "es" -> "¿Cuenta antigua con código de iglesia?"
+                        else -> "Ansyen kont ki gen kòd legliz?"
                       }
                     },
-                    onError = { msg -> localError = msg },
-                  )
-                },
-                testTag = "admin_google_verify_button",
-              )
+                  style = MaterialTheme.typography.labelSmall,
+                  color = MutedGlassText,
+                  fontWeight = FontWeight.Medium,
+                )
+              }
+
+              if (showLegacyAdminCodeFallback) {
+                GlassInputField(
+                  value = adminPasscodeInput,
+                  onValueChange = {
+                    adminPasscodeInput = it
+                    localError = null
+                    onClearFeedback()
+                  },
+                  label = "Ansyen Kòd Sekirite Legliz la",
+                  placeholder = "Antre Admin Passcode legliz la",
+                  leadingIcon = Icons.Default.Lock,
+                  trailingIcon = {
+                    IconButton(
+                      onClick = { isAdminPasscodeVisible = !isAdminPasscodeVisible },
+                      modifier = Modifier.testTag("admin_passcode_visibility_toggle"),
+                    ) {
+                      Icon(
+                        imageVector =
+                          if (isAdminPasscodeVisible) Icons.Default.VisibilityOff
+                          else Icons.Default.Visibility,
+                        contentDescription =
+                          if (isAdminPasscodeVisible) "Kache kòd la" else "Montre kòd la",
+                        tint = BlueNeon,
+                      )
+                    }
+                  },
+                  visualTransformation =
+                    if (isAdminPasscodeVisible) VisualTransformation.None
+                    else PasswordVisualTransformation(),
+                  keyboardType = KeyboardType.Password,
+                  testTag = "admin_passcode_input",
+                )
+
+                GlassButton(
+                  text = "Antre nan Espas Administratè",
+                  icon = Icons.Default.AdminPanelSettings,
+                  isPrimaryNeon = true,
+                  isLoading = isAuthenticating,
+                  onClick = {
+                    localError = null
+                    onClearFeedback()
+                    val targetChurchId = resolvedChurch?.id ?: selectedChurchId.orEmpty()
+                    onLoginAdmin(
+                      targetChurchId,
+                      adminPasscodeInput,
+                      adminGooglePayload?.email,
+                      adminGooglePayload?.uid,
+                    )
+                  },
+                  modifier = Modifier.fillMaxWidth(),
+                  testTag = "admin_login_submit_button",
+                )
+              }
             }
           }
 
@@ -972,62 +1219,152 @@ fun OmniChurchAuthPortalScreen(
         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
       ) {
-        Text(
-          text = "Chwazi Legliz ou a",
-          style = MaterialTheme.typography.titleLarge,
-          color = PureWhite,
-          fontWeight = FontWeight.Bold,
-        )
-        if (churches.isEmpty()) {
-          Text(
-            text = "Pa gen okenn legliz ki anrejistre nan baz done a kounye a.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MutedGlassText,
-          )
-          Text(
-            text = "Se sèlman sou Platfòm Web OmniChurch Pro administratè yo kreye legliz. Yon fwa kreye sou Web la, li ap parèt isit la otomatikman.",
-            style = MaterialTheme.typography.bodySmall,
-            color = BrandGold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 8.dp),
-          )
-        } else {
-          churches.forEach { church ->
-            val isSelected = resolvedChurch?.id == church.id
-            PremiumGlassCard(
-              cornerRadius = 16.dp,
-              isHighlighted = isSelected,
-              accentColor = if (isSelected) BlueNeon else ElectricBlue,
-              onClick = {
-                selectedChurchId = church.id
-                showChurchSelectorSheet = false
-              },
-              contentPadding = PaddingValues(14.dp),
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+          ) {
+            OmniChurchLogo(
+              variant = LogoVariant.Icon,
+              modifier = Modifier.size(28.dp),
+              contentDescription = "OmniChurch PRO",
+            )
+            Text(
+              text = "Chwazi Legliz ou a",
+              style = MaterialTheme.typography.titleLarge,
+              color = PureWhite,
+              fontWeight = FontWeight.Bold,
+            )
+          }
+          IconButton(
+            onClick = { onRetryLoadChurches() },
+            modifier = Modifier.minimumInteractiveComponentSize().testTag("refresh_churches_button"),
+          ) {
+            Icon(
+              imageVector = Icons.Default.Refresh,
+              contentDescription = "Rafrechi lis legliz yo",
+              tint = BlueNeon,
+            )
+          }
+        }
+        when {
+          churchesUiState is UiState.Loading && churches.isEmpty() -> {
+            Column(
+              modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-              Row(
+              CircularProgressIndicator(color = BlueNeon, modifier = Modifier.size(34.dp))
+              Text(
+                text = "Ap chaje legliz yo depi nan baz done a...",
+                style = MaterialTheme.typography.bodyMedium,
+                color = GlassWhite,
+                textAlign = TextAlign.Center,
+              )
+            }
+          }
+          churchesUiState is UiState.Error && churches.isEmpty() -> {
+            Box(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .clip(RoundedCornerShape(14.dp))
+                  .background(ErrorRed.copy(alpha = 0.2f))
+                  .border(1.dp, ErrorRed, RoundedCornerShape(14.dp))
+                  .padding(14.dp)
+                  .testTag("churches_error_banner")
+            ) {
+              Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
               ) {
-                Column(modifier = Modifier.weight(1f)) {
-                  Text(
-                    text = church.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = PureWhite,
-                    fontWeight = FontWeight.Bold,
-                  )
-                  Text(
-                    text = "Kòd Legliz: ${church.effectiveCode}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = BrandGold,
-                  )
-                }
-                if (isSelected) {
-                  Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = SuccessGreen,
-                  )
+                Text(
+                  text = "Pa ka chaje lis legliz yo",
+                  style = MaterialTheme.typography.titleSmall,
+                  color = PureWhite,
+                  fontWeight = FontWeight.Bold,
+                )
+                Text(
+                  text = churchesUiState.message,
+                  style = MaterialTheme.typography.bodySmall,
+                  color = GlassWhite,
+                )
+              }
+            }
+            GlassButton(
+              text = "Re-eseye / Rafrechi",
+              onClick = { onRetryLoadChurches() },
+              testTag = "retry_churches_button",
+            )
+          }
+          churches.isEmpty() -> {
+            Text(
+              text = "Pa gen okenn legliz ki anrejistre nan baz done a kounye a.",
+              style = MaterialTheme.typography.bodyMedium,
+              color = MutedGlassText,
+            )
+            Text(
+              text = "Se sèlman sou Platfòm Web OmniChurch Pro administratè yo kreye legliz. Yon fwa kreye sou Web la, li ap parèt isit la otomatikman.",
+              style = MaterialTheme.typography.bodySmall,
+              color = BrandGold,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.padding(top = 4.dp),
+            )
+            GlassButton(
+              text = "Rafrechi Lis Legliz yo",
+              onClick = { onRetryLoadChurches() },
+              testTag = "retry_churches_empty_button",
+            )
+          }
+          else -> {
+            Column(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .heightIn(max = 400.dp)
+                  .verticalScroll(rememberScrollState()),
+              verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              churches.forEach { church ->
+                val isSelected = resolvedChurch?.id == church.id
+                PremiumGlassCard(
+                  cornerRadius = 16.dp,
+                  isHighlighted = isSelected,
+                  accentColor = if (isSelected) BlueNeon else ElectricBlue,
+                  onClick = {
+                    selectedChurchId = church.id
+                    showChurchSelectorSheet = false
+                  },
+                  contentPadding = PaddingValues(14.dp),
+                ) {
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                  ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                      Text(
+                        text = church.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = PureWhite,
+                        fontWeight = FontWeight.Bold,
+                      )
+                      Text(
+                        text = "Kòd Legliz: ${church.effectiveCode}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = BrandGold,
+                      )
+                    }
+                    if (isSelected) {
+                      Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = SuccessGreen,
+                      )
+                    }
+                  }
                 }
               }
             }
@@ -1044,12 +1381,22 @@ fun OmniChurchAuthPortalScreen(
         modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
-        Text(
-          text = "Lye Kont Google ou ak ID Matrikil ou",
-          style = MaterialTheme.typography.titleLarge,
-          color = PureWhite,
-          fontWeight = FontWeight.Bold,
-        )
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          OmniChurchLogo(
+            variant = LogoVariant.Icon,
+            modifier = Modifier.size(28.dp),
+            contentDescription = "OmniChurch PRO",
+          )
+          Text(
+            text = "Lye Kont Google ou ak ID Matrikil ou",
+            style = MaterialTheme.typography.titleLarge,
+            color = PureWhite,
+            fontWeight = FontWeight.Bold,
+          )
+        }
         Text(
           text =
             "Kont Google (${googlePayload.email}) poko lye ak yon ID Matrikil. Antre ID Matrikil ou ak PIN ou yon sèl fwa pou lye yo:",
@@ -1094,6 +1441,104 @@ fun OmniChurchAuthPortalScreen(
           modifier = Modifier.fillMaxWidth(),
           testTag = "confirm_link_google_button",
         )
+      }
+    }
+  }
+
+  if (pendingAdminOwnedChurches.isNotEmpty()) {
+    GlassModalBottomSheet(onDismissRequest = onCancelOwnedAdminChurchSelection) {
+      Column(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          OmniChurchLogo(
+            variant = LogoVariant.Icon,
+            modifier = Modifier.size(28.dp),
+            contentDescription = "OmniChurch PRO",
+          )
+          Text(
+            text = ownedChurchesSheetTitle,
+            style = MaterialTheme.typography.titleLarge,
+            color = PureWhite,
+            fontWeight = FontWeight.Bold,
+          )
+        }
+        Text(
+          text = ownedChurchesSheetSubtitle,
+          style = MaterialTheme.typography.bodySmall,
+          color = GlassWhite.copy(alpha = 0.88f),
+        )
+        Column(
+          modifier =
+            Modifier.fillMaxWidth()
+              .heightIn(max = 380.dp)
+              .verticalScroll(rememberScrollState()),
+          verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          pendingAdminOwnedChurches.forEach { ownedChurch ->
+            PremiumGlassCard(
+              cornerRadius = 16.dp,
+              isHighlighted = true,
+              accentColor = BrandGold,
+              onClick = { onSelectOwnedAdminChurch(ownedChurch) },
+              contentPadding = PaddingValues(14.dp),
+              modifier = Modifier.testTag("owned_church_item_${ownedChurch.id}"),
+            ) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+              ) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.weight(1f),
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.AccountBalance,
+                    contentDescription = null,
+                    tint = BrandGold,
+                    modifier = Modifier.size(22.dp),
+                  )
+                  Spacer(modifier = Modifier.width(12.dp))
+                  Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                      text = ownedChurch.name,
+                      style = MaterialTheme.typography.titleMedium,
+                      color = PureWhite,
+                      fontWeight = FontWeight.Bold,
+                      maxLines = 1,
+                      overflow = TextOverflow.Ellipsis,
+                    )
+                    val subtitle =
+                      listOfNotNull(
+                        ownedChurch.effectiveCode.takeIf { it.isNotBlank() },
+                        ownedChurch.city?.takeIf { it.isNotBlank() },
+                      ).joinToString(" • ")
+                    if (subtitle.isNotBlank()) {
+                      Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = BrandGold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                      )
+                    }
+                  }
+                }
+                Icon(
+                  imageVector = Icons.Default.VerifiedUser,
+                  contentDescription = null,
+                  tint = SuccessGreen,
+                  modifier = Modifier.size(20.dp),
+                )
+              }
+            }
+          }
+        }
       }
     }
   }

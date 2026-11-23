@@ -53,7 +53,7 @@ class AuthRepository(
   private val db: FirebaseFirestore,
   private val churchRepository: ChurchRepository,
   private val firebaseAuth: FirebaseAuth = Firebase.auth,
-  private val sessionLockManager: SessionLockManager = SessionLockManager(),
+  val sessionLockManager: SessionLockManager = SessionLockManager(),
   private val preferencesManager: OmniPreferencesManager? = null,
 ) {
   constructor(context: Context) : this(
@@ -218,12 +218,14 @@ class AuthRepository(
       member.email?.trim()?.takeIf { it.isNotEmpty() } ?: cleanGoogleEmail
 
     val updates =
-      filterNonNullMap(
-        "googleEmail" to cleanGoogleEmail,
-        "googleUid" to cleanGoogleUid,
-        "googlePhoto" to googlePhotoUrl?.trim()?.takeIf { it.isNotEmpty() },
-        "email" to preservedEmail,
-        "updatedAt" to FieldValue.serverTimestamp(),
+      FirestorePayloadSanitizer.sanitizeMemberUpdate(
+        hashMapOf(
+          "googleEmail" to cleanGoogleEmail.lowercase(Locale.US),
+          "googleUid" to cleanGoogleUid,
+          "googlePhoto" to googlePhotoUrl?.trim()?.takeIf { it.isNotEmpty() },
+          "email" to preservedEmail,
+          "updatedAt" to FieldValue.serverTimestamp(),
+        )
       )
 
     return try {
@@ -312,6 +314,7 @@ class AuthRepository(
         }
       }
       runCatching { user.sendEmailVerification() }
+      FirestorePayloadSanitizer.refreshAuthToken(user)
       Result.success(user)
     } catch (e: CancellationException) {
       throw e
@@ -321,6 +324,7 @@ class AuthRepository(
         val existingUser =
           signInResult.user
             ?: return Result.failure(OmniAuthException(localizedEmailInUseWrongPassword(languageCode)))
+        FirestorePayloadSanitizer.refreshAuthToken(existingUser)
         Result.success(existingUser)
       } catch (signInErr: CancellationException) {
         throw signInErr
@@ -402,6 +406,59 @@ class AuthRepository(
     )
   }
 
+  /**
+   * Resolves all churches owned by the currently authenticated Firebase Admin user by querying
+   * `ownerId == uid`, `adminGoogleUid == uid`, and (when `emailVerified == true`)
+   * `adminGoogleEmail == email.lowercase()`.
+   */
+  suspend fun resolveAdminOwnedChurches(user: FirebaseUser): List<Church> {
+    val uid = user.uid.trim()
+    if (uid.isEmpty()) return emptyList()
+    val results = linkedMapOf<String, Church>()
+
+    runCatching {
+      db.collection("churches").whereEqualTo("ownerId", uid).get().awaitSafe()
+        .documents.mapNotNull { it.toChurch() }
+        .forEach { results[it.id] = it }
+    }
+    runCatching {
+      db.collection("churches").whereEqualTo("adminGoogleUid", uid).get().awaitSafe()
+        .documents.mapNotNull { it.toChurch() }
+        .forEach { results[it.id] = it }
+    }
+    val lowerEmail = user.email?.trim()?.lowercase(Locale.US).orEmpty()
+    if (user.isEmailVerified && lowerEmail.isNotEmpty()) {
+      runCatching {
+        db.collection("churches").whereEqualTo("adminGoogleEmail", lowerEmail).get().awaitSafe()
+          .documents.mapNotNull { it.toChurch() }
+          .forEach { results[it.id] = it }
+      }
+    }
+    return results.values.toList()
+  }
+
+  /**
+   * If a cached churchId triggers `owner_mismatch` / `PERMISSION_DENIED` while the signed-in user
+   * uniquely owns a single church in Firestore, returns that church so the client can cleanly
+   * auto-rebind without manual intervention.
+   */
+  suspend fun resolveAutoRebindChurchIfUniquelyOwned(failedChurchId: String?): Church? {
+    val user = firebaseAuth.currentUser ?: return null
+    FirestorePayloadSanitizer.refreshAuthToken(user)
+    val owned = resolveAdminOwnedChurches(user)
+    if (owned.size != 1) return null
+    val uniqueChurch = owned.first()
+    val cleanFailed = failedChurchId?.trim().orEmpty()
+    return if (uniqueChurch.id.isNotBlank() && !uniqueChurch.id.equals(cleanFailed, ignoreCase = true)) {
+      uniqueChurch
+    } else {
+      null
+    }
+  }
+
+  suspend fun refreshCurrentUserToken(): Boolean =
+    FirestorePayloadSanitizer.refreshAuthToken(firebaseAuth.currentUser)
+
   private suspend fun persistNewChurchDocument(
     churchName: String,
     churchCode: String,
@@ -412,6 +469,10 @@ class AuthRepository(
     ownerPhoto: String?,
     authMethod: String,
   ): Result<Church> {
+    val activeUser =
+      FirestorePayloadSanitizer.requireActiveAdminAuth(firebaseAuth, "kreye yon nouvo legliz")
+        .getOrElse { return Result.failure(OmniAuthException(it.localizedMessage ?: "Sesyon Firebase ekspire.")) }
+
     val cleanCode =
       churchCode
         .trim()
@@ -424,14 +485,20 @@ class AuthRepository(
       val existingSnap = docRef.get().await()
       val targetRef =
         if (existingSnap.exists()) db.collection("churches").document() else docRef
+      if (!FirestorePayloadSanitizer.isValidChurchId(targetRef.id)) {
+        return Result.failure(OmniAuthException("ID legliz la pa valid."))
+      }
 
-      val payload =
-        filterNonNullMap(
+      val resolvedUid = activeUser.uid
+      val resolvedEmail = (activeUser.email ?: ownerEmail).trim().lowercase(Locale.US)
+      val rawPayload =
+        hashMapOf<String, Any?>(
+          "id" to targetRef.id,
           "code" to cleanCode,
           "name" to churchName,
-          "ownerId" to ownerUid,
-          "adminGoogleEmail" to ownerEmail.lowercase(Locale.US),
-          "adminGoogleUid" to ownerUid,
+          "ownerId" to resolvedUid,
+          "adminGoogleEmail" to resolvedEmail,
+          "adminGoogleUid" to resolvedUid,
           "adminGoogleName" to ownerName,
           "adminGooglePhoto" to ownerPhoto,
           "adminAuthMethod" to authMethod,
@@ -439,8 +506,15 @@ class AuthRepository(
           "autoLockMinutes" to 5,
           "address" to churchAddress.trim().takeIf { it.isNotBlank() },
           "tagline" to "Legliz la nan poch ou",
+          "status" to "active",
           "createdAt" to FieldValue.serverTimestamp(),
           "updatedAt" to FieldValue.serverTimestamp(),
+        )
+      val payload =
+        FirestorePayloadSanitizer.sanitizeChurchCreate(
+          raw = rawPayload,
+          docId = targetRef.id,
+          currentUser = activeUser,
         )
       targetRef.set(payload).await()
       sessionLockManager.authorizeChurchAdminSession(targetRef.id)
@@ -451,9 +525,9 @@ class AuthRepository(
           code = cleanCode,
           name = churchName,
           address = churchAddress.trim(),
-          ownerId = ownerUid,
-          adminGoogleEmail = ownerEmail.lowercase(Locale.US),
-          adminGoogleUid = ownerUid,
+          ownerId = resolvedUid,
+          adminGoogleEmail = resolvedEmail,
+          adminGoogleUid = resolvedUid,
           adminGoogleName = ownerName,
           adminGooglePhoto = ownerPhoto,
           adminAuthMethod = authMethod,
@@ -466,6 +540,269 @@ class AuthRepository(
     } catch (e: Exception) {
       handleFirestoreError(e, OperationType.CREATE, docRef.path)
       Result.failure(OmniAuthException(e.localizedMessage ?: "Erè pandan kreyasyon legliz la."))
+    }
+  }
+
+  sealed class AdminAutoLoginResolution {
+    data class SingleChurchResolved(val church: Church) : AdminAutoLoginResolution()
+    data class MultipleOwnedChurches(val churches: List<Church>) : AdminAutoLoginResolution()
+  }
+
+  /**
+   * Smart Expert Admin Sign-In: authenticates with Firebase Email + Password, refreshes the ID
+   * token, and resolves ONLY the churches strictly owned/authorized for that admin without ever
+   * exposing other tenants' churches.
+   *
+   * - 1 owned church -> immediately syncs profile & returns [AdminAutoLoginResolution.SingleChurchResolved]
+   * - >1 owned churches -> returns [AdminAutoLoginResolution.MultipleOwnedChurches] containing strictly owned churches
+   * - 0 owned churches -> signs out cleanly & returns an error
+   */
+  suspend fun signInAdminSmartWithEmailAndPassword(
+    email: String,
+    password: String,
+  ): Result<AdminAutoLoginResolution> {
+    val cleanEmail = email.trim().lowercase(Locale.US)
+    if (cleanEmail.isEmpty()) {
+      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_EMPTY_EMAIL))
+    }
+    if (!cleanEmail.contains("@") || !cleanEmail.substringAfter("@").contains(".")) {
+      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_INVALID_EMAIL))
+    }
+    if (password.isBlank()) {
+      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_EMPTY_PASSWORD))
+    }
+
+    return try {
+      val authResult = firebaseAuth.signInWithEmailAndPassword(cleanEmail, password).await()
+      val firebaseUser =
+        authResult.user ?: return Result.failure(OmniAuthException("Otantifikasyon echwe."))
+
+      // Refresh ID token immediately so `email_verified` claims are current before Firestore queries/writes.
+      FirestorePayloadSanitizer.refreshAuthToken(firebaseUser)
+
+      val resolvedEmail = (firebaseUser.email ?: cleanEmail).trim().lowercase(Locale.US)
+      val isSuperDev = CryptoSecurity.isSuperDeveloperAccount(resolvedEmail)
+
+      val ownedChurches = linkedMapOf<String, Church>()
+      // 1. Strictly query churches directly owned by this Firebase user
+      resolveAdminOwnedChurches(firebaseUser).forEach { church ->
+        ownedChurches[church.id] = church
+      }
+
+      // 2. Also include church linked on users/{uid} ONLY if admin/super_admin and strictly authorized
+      val existingUserProfile =
+        runCatching {
+          db.collection("users")
+            .document(firebaseUser.uid)
+            .get()
+            .await()
+            .toUserProfile()
+        }.getOrNull()
+
+      if (isSuperDev) {
+        churchRepository.fetchAllChurches().forEach { church ->
+          ownedChurches[church.id] = church
+        }
+      } else {
+        val profileChurchId = existingUserProfile?.churchId?.trim().orEmpty()
+        val isProfileAdmin =
+          existingUserProfile?.role?.trim()?.lowercase(Locale.US) in setOf("admin", "super_admin")
+        if (profileChurchId.isNotEmpty() && isProfileAdmin && !ownedChurches.containsKey(profileChurchId)) {
+          val profileChurch =
+            runCatching {
+              db.collection("churches").document(profileChurchId).get().awaitSafe().toChurch()
+            }.getOrNull()
+          if (profileChurch != null &&
+            OmniAuthEvaluator.isChurchEmailAdminAuthorized(profileChurch, resolvedEmail, firebaseUser.uid)
+          ) {
+            ownedChurches[profileChurch.id] = profileChurch
+          }
+        }
+        // Fallback check for unverified email case where church stores matching email/adminGoogleEmail
+        if (ownedChurches.isEmpty()) {
+          val byContactEmail =
+            runCatching {
+              db.collection("churches").whereEqualTo("adminGoogleEmail", resolvedEmail).get().awaitSafe()
+                .documents.mapNotNull { it.toChurch() }
+            }.getOrDefault(emptyList())
+          byContactEmail
+            .filter { OmniAuthEvaluator.isChurchEmailAdminAuthorized(it, resolvedEmail, firebaseUser.uid) }
+            .forEach { ownedChurches[it.id] = it }
+
+          if (ownedChurches.isEmpty()) {
+            val byLegacyEmail =
+              runCatching {
+                db.collection("churches").whereEqualTo("email", resolvedEmail).get().awaitSafe()
+                  .documents.mapNotNull { it.toChurch() }
+              }.getOrDefault(emptyList())
+            byLegacyEmail
+              .filter { OmniAuthEvaluator.isChurchEmailAdminAuthorized(it, resolvedEmail, firebaseUser.uid) }
+              .forEach { ownedChurches[it.id] = it }
+          }
+        }
+      }
+
+      val authorizedList =
+        ownedChurches.values
+          .filter { it.id.isNotBlank() }
+          .sortedBy { it.name.lowercase(Locale.getDefault()) }
+
+      when {
+        authorizedList.isEmpty() -> {
+          runCatching { firebaseAuth.signOut() }
+          Result.failure(
+            OmniAuthException(
+              "Okenn legliz pa lye oswa otorize pou imèl \"$resolvedEmail\". Verifye imèl kont administratè legliz ou a."
+            )
+          )
+        }
+        authorizedList.size == 1 -> {
+          val targetChurch = authorizedList.first()
+          finalizeAdminChurchSelection(targetChurch)
+            .map { AdminAutoLoginResolution.SingleChurchResolved(it) }
+        }
+        else -> {
+          Result.success(AdminAutoLoginResolution.MultipleOwnedChurches(authorizedList))
+        }
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: FirebaseAuthInvalidUserException) {
+      Result.failure(
+        OmniAuthException("Kont imèl sa a pa egziste oswa li dezaktive. Verifye imèl la.")
+      )
+    } catch (e: FirebaseAuthInvalidCredentialsException) {
+      Result.failure(
+        OmniAuthException("Imèl oswa modpas la pa kòrèk. Verifye enfòmasyon yo epi eseye ankò.")
+      )
+    } catch (e: FirebaseTooManyRequestsException) {
+      Result.failure(
+        OmniAuthException("Twòp tantativ koneksyon echwe. Tanpri tann kèk minit anvan ou re-eseye.")
+      )
+    } catch (e: FirebaseNetworkException) {
+      Result.failure(
+        OmniAuthException("Pa gen koneksyon entènèt. Verifye rezo ou epi eseye ankò.")
+      )
+    } catch (e: Exception) {
+      handleFirestoreError(e, OperationType.GET, "churches")
+      Result.failure(OmniAuthException(e.localizedMessage ?: "Imèl oswa modpas la pa kòrèk."))
+    }
+  }
+
+  /**
+   * Finalizes an authenticated admin's selection of one of their own churches (binding `users/{uid}`
+   * and authorizing the local session lock).
+   */
+  suspend fun finalizeAdminChurchSelection(church: Church): Result<Church> {
+    val firebaseUser =
+      firebaseAuth.currentUser
+        ?: return Result.failure(OmniAuthException("Sesyon Firebase ou a ekspire. Tanpri rekonekte."))
+    val resolvedEmail = (firebaseUser.email ?: "").trim().lowercase(Locale.US)
+    val isAuthorized =
+      CryptoSecurity.isSuperDeveloperAccount(resolvedEmail) ||
+        OmniAuthEvaluator.isChurchEmailAdminAuthorized(church, resolvedEmail, firebaseUser.uid)
+    if (!isAuthorized) {
+      return Result.failure(
+        OmniAuthException("Kont ou a pa gen otorizasyon administratè pou legliz ${church.name}.")
+      )
+    }
+    syncAdminUserProfileForChurch(
+      uid = firebaseUser.uid,
+      email = resolvedEmail,
+      displayName =
+        firebaseUser.displayName?.takeIf { it.isNotBlank() }
+          ?: church.pastor.takeIf { it.isNotBlank() }
+          ?: church.name.ifBlank { "Admin OmniChurch" },
+      photoUrl = firebaseUser.photoUrl?.toString(),
+      church = church,
+    )
+    sessionLockManager.authorizeChurchAdminSession(church.id)
+    return Result.success(church)
+  }
+
+  /**
+   * Smart Expert Admin Sign-In for Google Sign-In: uses the currently authenticated Firebase
+   * Google user, refreshes the ID token, and resolves ONLY their owned/authorized churches
+   * without exposing any other church on the platform.
+   */
+  suspend fun signInAdminSmartWithCurrentGoogleUser(): Result<AdminAutoLoginResolution> {
+    val firebaseUser =
+      firebaseAuth.currentUser
+        ?: return Result.failure(
+          OmniAuthException("Koneksyon Google la pa konplete ak Firebase. Tanpri eseye ankò.")
+        )
+    return try {
+      FirestorePayloadSanitizer.refreshAuthToken(firebaseUser)
+      val resolvedEmail = (firebaseUser.email ?: "").trim().lowercase(Locale.US)
+      val isSuperDev = CryptoSecurity.isSuperDeveloperAccount(resolvedEmail)
+
+      val ownedChurches = linkedMapOf<String, Church>()
+      resolveAdminOwnedChurches(firebaseUser).forEach { church ->
+        ownedChurches[church.id] = church
+      }
+
+      if (isSuperDev) {
+        churchRepository.fetchAllChurches().forEach { church ->
+          ownedChurches[church.id] = church
+        }
+      } else {
+        val existingUserProfile =
+          runCatching {
+            db.collection("users").document(firebaseUser.uid).get().await().toUserProfile()
+          }.getOrNull()
+        val profileChurchId = existingUserProfile?.churchId?.trim().orEmpty()
+        val isProfileAdmin =
+          existingUserProfile?.role?.trim()?.lowercase(Locale.US) in setOf("admin", "super_admin")
+        if (profileChurchId.isNotEmpty() && isProfileAdmin && !ownedChurches.containsKey(profileChurchId)) {
+          val profileChurch =
+            runCatching {
+              db.collection("churches").document(profileChurchId).get().awaitSafe().toChurch()
+            }.getOrNull()
+          if (profileChurch != null &&
+            OmniAuthEvaluator.isChurchEmailAdminAuthorized(profileChurch, resolvedEmail, firebaseUser.uid)
+          ) {
+            ownedChurches[profileChurch.id] = profileChurch
+          }
+        }
+        if (ownedChurches.isEmpty() && resolvedEmail.isNotEmpty()) {
+          val byContactEmail =
+            runCatching {
+              db.collection("churches").whereEqualTo("adminGoogleEmail", resolvedEmail).get().awaitSafe()
+                .documents.mapNotNull { it.toChurch() }
+            }.getOrDefault(emptyList())
+          byContactEmail
+            .filter { OmniAuthEvaluator.isChurchEmailAdminAuthorized(it, resolvedEmail, firebaseUser.uid) }
+            .forEach { ownedChurches[it.id] = it }
+        }
+      }
+
+      val authorizedList =
+        ownedChurches.values
+          .filter { it.id.isNotBlank() }
+          .sortedBy { it.name.lowercase(Locale.getDefault()) }
+
+      when {
+        authorizedList.isEmpty() -> {
+          runCatching { firebaseAuth.signOut() }
+          Result.failure(
+            OmniAuthException(
+              "Okenn legliz pa lye ak kont Google \"$resolvedEmail\". Verifye kont Google administratè legliz ou a."
+            )
+          )
+        }
+        authorizedList.size == 1 -> {
+          finalizeAdminChurchSelection(authorizedList.first())
+            .map { AdminAutoLoginResolution.SingleChurchResolved(it) }
+        }
+        else -> {
+          Result.success(AdminAutoLoginResolution.MultipleOwnedChurches(authorizedList))
+        }
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      handleFirestoreError(e, OperationType.GET, "churches")
+      Result.failure(OmniAuthException(e.localizedMessage ?: "Erè pandan verifikasyon kont Google Admin nan."))
     }
   }
 
@@ -490,6 +827,9 @@ class AuthRepository(
       val firebaseUser =
         authResult.user ?: return Result.failure(OmniAuthException("Otantifikasyon echwe."))
 
+      // Immediately refresh ID token so updated `email_verified` claims propagate before writes.
+      FirestorePayloadSanitizer.refreshAuthToken(firebaseUser)
+
       val existingUserProfile =
         runCatching {
           db.collection("users")
@@ -499,10 +839,18 @@ class AuthRepository(
             .toUserProfile()
         }.getOrNull()
 
-      val churches = churchRepository.fetchAllChurches()
+      // First resolve churches directly owned by this Firebase user (ownerId, adminGoogleUid, verified email)
+      val directOwnedChurches = resolveAdminOwnedChurches(firebaseUser)
+      val allChurches =
+        if (directOwnedChurches.isNotEmpty() && selectedChurchId.isNullOrBlank()) {
+          directOwnedChurches
+        } else {
+          (directOwnedChurches + churchRepository.fetchAllChurches()).distinctBy { it.id }
+        }
+
       val resolutionResult =
         OmniAuthEvaluator.resolveChurchForEmailPasswordLogin(
-          churches = churches,
+          churches = allChurches,
           email = firebaseUser.email ?: cleanEmail,
           uid = firebaseUser.uid,
           selectedChurchId = selectedChurchId,
@@ -510,7 +858,11 @@ class AuthRepository(
           profileRole = existingUserProfile?.role,
         )
 
-      val matchedChurch = resolutionResult.getOrNull()
+      var matchedChurch = resolutionResult.getOrNull()
+      if (matchedChurch == null && directOwnedChurches.size == 1) {
+        // Auto-rebind when cached/selected church mismatches but user uniquely owns one church
+        matchedChurch = directOwnedChurches.first()
+      }
       if (matchedChurch == null) {
         runCatching { firebaseAuth.signOut() }
         return Result.failure(
@@ -574,6 +926,7 @@ class AuthRepository(
       val user =
         authResult.user
           ?: return Result.failure(OmniAuthException(localizedGenericAuthError(languageCode)))
+      FirestorePayloadSanitizer.refreshAuthToken(user)
       verifyAndHealChurchOwnership(
         church = church,
         user = user,
@@ -594,6 +947,7 @@ class AuthRepository(
     val user =
       firebaseAuth.currentUser
         ?: return Result.failure(OmniAuthException(localizedNoSignedInUser(languageCode)))
+    FirestorePayloadSanitizer.refreshAuthToken(user)
     return verifyAndHealChurchOwnership(
       church = church,
       user = user,
@@ -613,6 +967,7 @@ class AuthRepository(
       val user =
         authResult.user
           ?: return Result.failure(OmniAuthException(localizedGenericAuthError(languageCode)))
+      FirestorePayloadSanitizer.refreshAuthToken(user)
       verifyAndHealChurchOwnership(
         church = church,
         user = user,
@@ -644,12 +999,16 @@ class AuthRepository(
         if (church.adminGoogleUid.isNullOrBlank()) {
           val resolvedMethod = mergeAuthMethods(church.adminAuthMethod, authMethodUsed)
           val updates =
-            filterNonNullMap(
-              "adminGoogleUid" to user.uid,
-              "adminGoogleName" to user.displayName?.trim()?.takeIf { it.isNotEmpty() },
-              "adminGooglePhoto" to user.photoUrl?.toString()?.takeIf { it.isNotEmpty() },
-              "adminAuthMethod" to resolvedMethod,
-              "updatedAt" to FieldValue.serverTimestamp(),
+            FirestorePayloadSanitizer.sanitizeChurchUpdate(
+              raw =
+                hashMapOf(
+                  "adminGoogleUid" to user.uid,
+                  "adminGoogleName" to user.displayName?.trim()?.takeIf { it.isNotEmpty() },
+                  "adminGooglePhoto" to user.photoUrl?.toString()?.takeIf { it.isNotEmpty() },
+                  "adminAuthMethod" to resolvedMethod,
+                  "updatedAt" to FieldValue.serverTimestamp(),
+                ),
+              currentUser = user,
             )
           try {
             db.collection("churches").document(church.id).update(updates).await()
@@ -676,13 +1035,17 @@ class AuthRepository(
       OwnershipEvaluationStatus.UNCLAIMED_LEGACY_CHURCH -> {
         val cleanEmail = (user.email ?: "").trim().lowercase(Locale.US)
         val updates =
-          filterNonNullMap(
-            "adminGoogleEmail" to cleanEmail.takeIf { it.isNotEmpty() },
-            "adminGoogleUid" to user.uid,
-            "adminGoogleName" to user.displayName?.trim()?.takeIf { it.isNotEmpty() },
-            "adminGooglePhoto" to user.photoUrl?.toString()?.takeIf { it.isNotEmpty() },
-            "adminAuthMethod" to authMethodUsed,
-            "updatedAt" to FieldValue.serverTimestamp(),
+          FirestorePayloadSanitizer.sanitizeChurchUpdate(
+            raw =
+              hashMapOf(
+                "adminGoogleEmail" to cleanEmail.takeIf { it.isNotEmpty() },
+                "adminGoogleUid" to user.uid,
+                "adminGoogleName" to user.displayName?.trim()?.takeIf { it.isNotEmpty() },
+                "adminGooglePhoto" to user.photoUrl?.toString()?.takeIf { it.isNotEmpty() },
+                "adminAuthMethod" to authMethodUsed,
+                "updatedAt" to FieldValue.serverTimestamp(),
+              ),
+            currentUser = user,
           )
         try {
           db.collection("churches").document(church.id).update(updates).await()
@@ -704,16 +1067,22 @@ class AuthRepository(
         }
       }
       OwnershipEvaluationStatus.MISMATCHED_OWNER -> {
-        Result.failure(
-          OmniAuthException(
-            localizedMismatchedOwnerError(
-              languageCode = languageCode,
-              churchName = church.name.ifBlank { church.effectiveCode },
-              expectedEmail = eval.expectedOwnerEmail,
-              currentEmail = user.email,
+        val reboundChurch = resolveAutoRebindChurchIfUniquelyOwned(church.id)
+        if (reboundChurch != null) {
+          sessionLockManager.authorizeChurchAdminSession(reboundChurch.id)
+          Result.success(reboundChurch)
+        } else {
+          Result.failure(
+            OmniAuthException(
+              localizedMismatchedOwnerError(
+                languageCode = languageCode,
+                churchName = church.name.ifBlank { church.effectiveCode },
+                expectedEmail = eval.expectedOwnerEmail,
+                currentEmail = user.email,
+              )
             )
           )
-        )
+        }
       }
       OwnershipEvaluationStatus.NO_AUTH_USER -> {
         Result.failure(OmniAuthException(localizedNoSignedInUser(languageCode)))
@@ -786,21 +1155,21 @@ class AuthRepository(
     }
 
     var updatedChurch = church
-    if (verification.needsUpgrade) {
+    if (verification.needsUpgrade && liveUser != null) {
       val upgradedHash = CryptoSecurity.hashAdminPasscode(enteredPin, church.id)
       val upgradedAt = CryptoSecurity.isoTimestampNow()
-      try {
-        db
-          .collection("churches")
-          .document(church.id)
-          .update(
-            filterNonNullMap(
+      val sanitizedUpgrade =
+        FirestorePayloadSanitizer.sanitizeChurchUpdate(
+          raw =
+            hashMapOf(
               "adminPasscode" to upgradedHash,
               "adminPasscodeUpdatedAt" to upgradedAt,
               "updatedAt" to FieldValue.serverTimestamp(),
-            )
-          )
-          .await()
+            ),
+          currentUser = liveUser,
+        )
+      try {
+        db.collection("churches").document(church.id).update(sanitizedUpgrade).await()
         updatedChurch =
           church.copy(
             adminPasscode = upgradedHash,
@@ -813,6 +1182,9 @@ class AuthRepository(
       }
     }
 
+    if (liveUser != null) {
+      FirestorePayloadSanitizer.refreshAuthToken(liveUser)
+    }
     sessionLockManager.authorizeChurchAdminSession(church.id)
     return Result.success(updatedChurch)
   }
@@ -874,14 +1246,18 @@ class AuthRepository(
       if (verification.needsUpgrade) CryptoSecurity.isoTimestampNow() else church.adminPasscodeUpdatedAt
 
     val updates =
-      filterNonNullMap(
-        "adminGoogleEmail" to cleanEmail,
-        "adminGoogleUid" to user.uid,
-        "adminGoogleName" to user.displayName?.trim()?.takeIf { it.isNotEmpty() },
-        "adminAuthMethod" to "email_password",
-        "adminPasscode" to upgradedHash,
-        "adminPasscodeUpdatedAt" to upgradedAt,
-        "updatedAt" to FieldValue.serverTimestamp(),
+      FirestorePayloadSanitizer.sanitizeChurchUpdate(
+        raw =
+          hashMapOf(
+            "adminGoogleEmail" to cleanEmail,
+            "adminGoogleUid" to user.uid,
+            "adminGoogleName" to user.displayName?.trim()?.takeIf { it.isNotEmpty() },
+            "adminAuthMethod" to "email_password",
+            "adminPasscode" to upgradedHash,
+            "adminPasscodeUpdatedAt" to upgradedAt,
+            "updatedAt" to FieldValue.serverTimestamp(),
+          ),
+        currentUser = user,
       )
     val docPath = "churches/${church.id}"
     return try {
@@ -912,6 +1288,10 @@ class AuthRepository(
     autoLockMinutes: Int,
     languageCode: String,
   ): Result<Church> {
+    val activeUser =
+      FirestorePayloadSanitizer.requireActiveAdminAuth(firebaseAuth, "modifye sekirite legliz la")
+        .getOrElse { return Result.failure(OmniAuthException(it.localizedMessage ?: localizedNoSignedInUser(languageCode))) }
+
     val cleanNewPin = newPinOrNull?.trim()?.takeIf { it.isNotEmpty() }
     if (cleanNewPin != null && !cleanNewPin.matches(Regex("^\\d{4,6}$"))) {
       return Result.failure(OmniAuthException(localizedPinFormatError(languageCode)))
@@ -931,12 +1311,16 @@ class AuthRepository(
       if (cleanNewPin != null) CryptoSecurity.isoTimestampNow() else church.adminPasscodeUpdatedAt
 
     val updates =
-      filterNonNullMap(
-        "quickPinEnabled" to quickPinEnabled,
-        "autoLockMinutes" to safeAutoLock,
-        "adminPasscode" to nextHash,
-        "adminPasscodeUpdatedAt" to nextUpdatedAt,
-        "updatedAt" to FieldValue.serverTimestamp(),
+      FirestorePayloadSanitizer.sanitizeChurchUpdate(
+        raw =
+          hashMapOf(
+            "quickPinEnabled" to quickPinEnabled,
+            "autoLockMinutes" to safeAutoLock,
+            "adminPasscode" to nextHash,
+            "adminPasscodeUpdatedAt" to nextUpdatedAt,
+            "updatedAt" to FieldValue.serverTimestamp(),
+          ),
+        currentUser = activeUser,
       )
     val docPath = "churches/${church.id}"
     return try {
