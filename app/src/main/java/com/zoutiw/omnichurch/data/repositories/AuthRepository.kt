@@ -83,36 +83,18 @@ class AuthRepository(
     return firebaseAuth.currentUser?.uid?.trim()?.takeIf { it.isNotEmpty() } ?: "matrikil_pin_session"
   }
 
-  suspend fun authenticateMemberWithPin(
-    selectedChurchId: String?,
-    idOrPhone: String,
-    enteredPin: String,
-  ): Result<AuthenticatedMemberSession> {
-    val cleanInput = idOrPhone.trim()
-    val cleanPin = enteredPin.trim()
+  sealed interface MemberAutoLoginResolution {
+    data class SingleMemberResolved(val session: AuthenticatedMemberSession) : MemberAutoLoginResolution
+    data class MultipleMemberChurches(val sessions: List<AuthenticatedMemberSession>) : MemberAutoLoginResolution
+  }
 
-    if (cleanInput.isEmpty()) {
-      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_EMPTY_ID))
-    }
-    if (cleanPin.isEmpty()) {
-      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_EMPTY_PIN))
-    }
-
-    return try {
-      val churches = churchRepository.fetchAllChurches()
-      val resolvedChurch =
-        OmniAuthEvaluator.resolveChurchForMemberLogin(
-          churches = churches,
-          selectedChurchId = selectedChurchId,
-          idOrPhoneInput = cleanInput,
-        )
-          ?: return Result.failure(
-            OmniAuthException(OmniAuthEvaluator.ERROR_NO_CHURCH_SELECTED)
-          )
-
+  private suspend fun queryCandidateMembersForAutoAuth(
+    resolvedChurch: Church?,
+    cleanInput: String,
+  ): List<Member> {
+    if (resolvedChurch != null) {
       val churchId = resolvedChurch.id.trim()
       val churchCode = (resolvedChurch.code ?: "").trim()
-
       val membersSnap =
         try {
           if (churchCode.isNotEmpty() && !churchCode.equals(churchId, ignoreCase = true)) {
@@ -131,14 +113,150 @@ class AuthRepository(
         } catch (_: Exception) {
           db.collection("members").get().awaitSafe()
         }
-      val allMembers = membersSnap.documents.mapNotNull { it.toMember() }
+      return membersSnap.documents.mapNotNull { it.toMember() }
+    }
 
-      OmniAuthEvaluator.authenticateMemberFromList(
-        church = resolvedChurch,
-        churchMembers = allMembers,
-        idOrPhone = cleanInput,
-        enteredPin = cleanPin,
-      )
+    // Church-agnostic member lookup: run targeted indexed queries first, then fallback safely
+    val collected = linkedMapOf<String, Member>()
+    suspend fun collectQuery(field: String, value: String) {
+      if (value.isBlank()) return
+      runCatching {
+        val snap = db.collection("members").whereEqualTo(field, value).limit(20).get().awaitSafe()
+        snap.documents.mapNotNull { it.toMember() }.forEach { collected[it.id] = it }
+      }
+    }
+
+    val cleanUpper = cleanInput.uppercase(Locale.US)
+    val cleanLower = cleanInput.lowercase(Locale.US)
+    val digitsOnly = cleanInput.replace(Regex("[^0-9]"), "")
+
+    collectQuery("memberId", cleanInput)
+    if (cleanUpper != cleanInput) collectQuery("memberId", cleanUpper)
+    collectQuery("memberCode", cleanInput)
+    if (cleanUpper != cleanInput) collectQuery("memberCode", cleanUpper)
+    if (digitsOnly.length >= 7) {
+      collectQuery("phone", cleanInput)
+      if (digitsOnly != cleanInput) collectQuery("phone", digitsOnly)
+    }
+    if (cleanInput.contains("@")) {
+      collectQuery("email", cleanLower)
+      collectQuery("googleEmail", cleanLower)
+    }
+    if (!cleanInput.contains("/") && cleanInput.length in 2..128) {
+      runCatching {
+        val doc = db.collection("members").document(cleanInput).get().awaitSafe()
+        doc.toMember()?.let { collected[it.id] = it }
+      }
+    }
+
+    if (collected.isNotEmpty()) {
+      return collected.values.toList()
+    }
+
+    val fullSnap =
+      try {
+        db.collection("members").get().awaitSafe()
+      } catch (e: CancellationException) {
+        currentCoroutineContext().ensureActive()
+        delay(100)
+        db.collection("members").get().await()
+      }
+    return fullSnap.documents.mapNotNull { it.toMember() }
+  }
+
+  private suspend fun enrichMissingChurches(
+    sessions: List<AuthenticatedMemberSession>,
+    knownChurches: List<Church>,
+  ): List<AuthenticatedMemberSession> {
+    if (sessions.isEmpty()) return sessions
+    return sessions.map { session ->
+      val matchedKnown = knownChurches.firstOrNull { OmniAuthEvaluator.doesMemberBelongToChurch(session.member, it) }
+      if (matchedKnown != null) {
+        session.copy(church = matchedKnown)
+      } else {
+        val memberChurchId = session.member.churchId.trim()
+        val fetchedChurch =
+          if (memberChurchId.isNotEmpty()) {
+            runCatching {
+              db.collection("churches").document(memberChurchId).get().awaitSafe().toChurch()
+                ?: db.collection("churches").whereEqualTo("code", memberChurchId).limit(1).get().awaitSafe()
+                  .documents.firstOrNull()?.toChurch()
+            }.getOrNull()
+          } else null
+        if (fetchedChurch != null) session.copy(church = fetchedChurch) else session
+      }
+    }
+  }
+
+  suspend fun authenticateMemberSmartWithPin(
+    selectedChurchId: String?,
+    idOrPhone: String,
+    enteredPin: String,
+  ): Result<MemberAutoLoginResolution> {
+    val cleanInput = idOrPhone.trim()
+    val cleanPin = enteredPin.trim()
+
+    if (cleanInput.isEmpty()) {
+      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_EMPTY_ID))
+    }
+    if (cleanPin.isEmpty()) {
+      return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_EMPTY_PIN))
+    }
+
+    return try {
+      val churches = runCatching { churchRepository.fetchAllChurches() }.getOrElse { emptyList() }
+      val resolvedExplicitOrPrefixedChurch =
+        OmniAuthEvaluator.resolveChurchForMemberLogin(
+          churches = churches,
+          selectedChurchId = selectedChurchId,
+          idOrPhoneInput = cleanInput,
+        )
+
+      if (!selectedChurchId.isNullOrBlank() && resolvedExplicitOrPrefixedChurch == null) {
+        return Result.failure(OmniAuthException(OmniAuthEvaluator.ERROR_NO_CHURCH_SELECTED))
+      }
+
+      var candidateMembers =
+        queryCandidateMembersForAutoAuth(
+          resolvedChurch = resolvedExplicitOrPrefixedChurch,
+          cleanInput = cleanInput,
+        )
+
+      var evalResult =
+        OmniAuthEvaluator.authenticateMemberAutoResolving(
+          churches = churches,
+          allMembers = candidateMembers,
+          idOrPhone = cleanInput,
+          enteredPin = cleanPin,
+          selectedChurchId = selectedChurchId,
+        )
+
+      // If targeted query returned an unrelated candidate or none verified, try full normalized lookup once
+      if (evalResult.isFailure && resolvedExplicitOrPrefixedChurch == null) {
+        val fullMembersSnap =
+          runCatching { db.collection("members").get().awaitSafe() }.getOrNull()
+        val allMembers = fullMembersSnap?.documents?.mapNotNull { it.toMember() }.orEmpty()
+        if (allMembers.isNotEmpty() && allMembers.size > candidateMembers.size) {
+          candidateMembers = allMembers
+          evalResult =
+            OmniAuthEvaluator.authenticateMemberAutoResolving(
+              churches = churches,
+              allMembers = candidateMembers,
+              idOrPhone = cleanInput,
+              enteredPin = cleanPin,
+              selectedChurchId = null,
+            )
+        }
+      }
+
+      evalResult.map { rawSessions ->
+        val enriched = enrichMissingChurches(rawSessions, churches)
+        if (enriched.size == 1) {
+          MemberAutoLoginResolution.SingleMemberResolved(enriched.first())
+        } else {
+          MemberAutoLoginResolution.MultipleMemberChurches(enriched)
+        }
+      }
     } catch (e: CancellationException) {
       currentCoroutineContext().ensureActive()
       Result.failure(OmniAuthException("Koneksyon an te entèwonp, tanpri eseye ankò."))
@@ -149,6 +267,23 @@ class AuthRepository(
       Result.failure(
         OmniAuthException(e.localizedMessage ?: "Erè koneksyon ak baz done Firestore la.")
       )
+    }
+  }
+
+  suspend fun authenticateMemberWithPin(
+    selectedChurchId: String?,
+    idOrPhone: String,
+    enteredPin: String,
+  ): Result<AuthenticatedMemberSession> {
+    return authenticateMemberSmartWithPin(
+      selectedChurchId = selectedChurchId,
+      idOrPhone = idOrPhone,
+      enteredPin = enteredPin,
+    ).map { resolution ->
+      when (resolution) {
+        is MemberAutoLoginResolution.SingleMemberResolved -> resolution.session
+        is MemberAutoLoginResolution.MultipleMemberChurches -> resolution.sessions.first()
+      }
     }
   }
 

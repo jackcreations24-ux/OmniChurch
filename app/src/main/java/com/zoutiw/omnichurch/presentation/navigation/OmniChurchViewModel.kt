@@ -11,6 +11,7 @@ import com.zoutiw.omnichurch.data.models.Announcement
 import com.zoutiw.omnichurch.data.models.AnnouncementComment
 import com.zoutiw.omnichurch.data.models.AnnouncementReaction
 import com.zoutiw.omnichurch.data.models.AttendanceRecord
+import com.zoutiw.omnichurch.data.models.AuthenticatedMemberSession
 import com.zoutiw.omnichurch.data.models.Church
 import com.zoutiw.omnichurch.data.models.ChurchNotification
 import com.zoutiw.omnichurch.data.models.ChurchService
@@ -96,6 +97,11 @@ class OmniChurchViewModel(
 
   private val _pendingAdminOwnedChurches = MutableStateFlow<List<Church>>(emptyList())
   val pendingAdminOwnedChurches: StateFlow<List<Church>> = _pendingAdminOwnedChurches.asStateFlow()
+
+  private val _pendingMemberMatchedSessions =
+    MutableStateFlow<List<AuthenticatedMemberSession>>(emptyList())
+  val pendingMemberMatchedSessions: StateFlow<List<AuthenticatedMemberSession>> =
+    _pendingMemberMatchedSessions.asStateFlow()
 
   private val churchesRefreshTrigger = MutableStateFlow(0)
 
@@ -674,25 +680,60 @@ class OmniChurchViewModel(
     if (_isAuthenticating.value) return
     viewModelScope.launch {
       _isAuthenticating.value = true
-      repository.authenticateMemberWithPin(selectedChurchId, idOrPhone, enteredPin)
-        .onSuccess { session ->
-          preferencesManager.saveMemberSession(
-            churchId = session.church.id,
-            memberId = session.member.effectiveMatrikil,
-            memberDocId = session.member.id,
-            memberName = session.member.effectiveFullName,
-            barcodeToken = session.member.effectiveBarcodeToken,
-          )
-          _isAuthenticating.value = false
-          onSuccess()
+      repository.authenticateMemberSmartWithPin(selectedChurchId, idOrPhone, enteredPin)
+        .onSuccess { resolution ->
+          when (resolution) {
+            is AuthRepository.MemberAutoLoginResolution.SingleMemberResolved -> {
+              _pendingMemberMatchedSessions.value = emptyList()
+              val session = resolution.session
+              preferencesManager.saveMemberSession(
+                churchId = session.church.id,
+                memberId = session.member.effectiveMatrikil,
+                memberDocId = session.member.id,
+                memberName = session.member.effectiveFullName,
+                barcodeToken = session.member.effectiveBarcodeToken,
+              )
+              _isAuthenticating.value = false
+              onSuccess()
+            }
+            is AuthRepository.MemberAutoLoginResolution.MultipleMemberChurches -> {
+              _pendingMemberMatchedSessions.value = resolution.sessions
+              _isAuthenticating.value = false
+            }
+          }
         }
         .onFailure { err ->
+          _pendingMemberMatchedSessions.value = emptyList()
           _isAuthenticating.value = false
           val msg = err.localizedMessage ?: "Erè otantikasyon."
           _actionFeedbackMessage.value = msg
           onError(msg)
         }
     }
+  }
+
+  fun selectMatchedMemberSession(
+    session: AuthenticatedMemberSession,
+    onSuccess: () -> Unit = {},
+  ) {
+    if (_isAuthenticating.value) return
+    viewModelScope.launch {
+      _isAuthenticating.value = true
+      _pendingMemberMatchedSessions.value = emptyList()
+      preferencesManager.saveMemberSession(
+        churchId = session.church.id,
+        memberId = session.member.effectiveMatrikil,
+        memberDocId = session.member.id,
+        memberName = session.member.effectiveFullName,
+        barcodeToken = session.member.effectiveBarcodeToken,
+      )
+      _isAuthenticating.value = false
+      onSuccess()
+    }
+  }
+
+  fun cancelMatchedMemberChurchSelection() {
+    _pendingMemberMatchedSessions.value = emptyList()
   }
 
   fun unlockSavedBiometricSession(onSuccess: () -> Unit) {
@@ -859,6 +900,7 @@ class OmniChurchViewModel(
     viewModelScope.launch {
       activeAuthUidFlow.value = ""
       _pendingAdminOwnedChurches.value = emptyList()
+      _pendingMemberMatchedSessions.value = emptyList()
       optimisticReadAnnouncementIds.value = emptyMap()
       repository.authRepository.sessionLockManager.clearAllAdminLocks()
       preferencesManager.clearActiveSession()

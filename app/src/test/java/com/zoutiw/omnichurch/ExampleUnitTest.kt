@@ -316,6 +316,69 @@ class ExampleUnitTest {
   }
 
   @Test
+  fun `authenticateMemberAutoResolving detects member own church without selecting church list`() {
+    // 1. Direct ID lookup with selectedChurchId = null resolves church_etg01 automatically
+    val autoById =
+      OmniAuthEvaluator.authenticateMemberAutoResolving(
+        churches = sampleChurches,
+        allMembers = sampleMembers,
+        idOrPhone = "ETG01-MP9201",
+        enteredPin = "9201",
+        selectedChurchId = null,
+      )
+    assertTrue(autoById.isSuccess)
+    val idSessions = autoById.getOrThrow()
+    assertEquals(1, idSessions.size)
+    assertEquals("church_etg01", idSessions.first().church.id)
+    assertEquals("Marie-Pauline Joseph", idSessions.first().member.fullName)
+
+    // 2. Phone lookup with selectedChurchId = null resolves church_ch001 automatically
+    val autoByPhone =
+      OmniAuthEvaluator.authenticateMemberAutoResolving(
+        churches = sampleChurches,
+        allMembers = sampleMembers,
+        idOrPhone = "50937001234",
+        enteredPin = "9055",
+        selectedChurchId = null,
+      )
+    assertTrue(autoByPhone.isSuccess)
+    val phoneSessions = autoByPhone.getOrThrow()
+    assertEquals(1, phoneSessions.size)
+    assertEquals("church_ch001", phoneSessions.first().church.id)
+
+    // 3. Duplicate phone + PIN across 2 churches returns both verified sessions for user disambiguation
+    val sharedPhoneOtherChurch =
+      sampleMembers[1].copy(
+        id = "doc_shared",
+        churchId = "church_etg01",
+        phone = "50937001234",
+        pin = "9055",
+      )
+    val multiMatch =
+      OmniAuthEvaluator.authenticateMemberAutoResolving(
+        churches = sampleChurches,
+        allMembers = listOf(sampleMembers[0], sharedPhoneOtherChurch),
+        idOrPhone = "50937001234",
+        enteredPin = "9055",
+        selectedChurchId = null,
+      )
+    assertTrue(multiMatch.isSuccess)
+    assertEquals(2, multiMatch.getOrThrow().size)
+
+    // 4. Non-existent ID returns global not-found error
+    val missing =
+      OmniAuthEvaluator.authenticateMemberAutoResolving(
+        churches = sampleChurches,
+        allMembers = sampleMembers,
+        idOrPhone = "UNKNOWN-9999",
+        enteredPin = "9055",
+        selectedChurchId = null,
+      )
+    assertTrue(missing.isFailure)
+    assertTrue(missing.exceptionOrNull() is OmniAuthException)
+  }
+
+  @Test
   fun `salted SHA-256 admin passcode verification and admin Google email authorization work accurately`() {
     val churchA = sampleChurches[0] // salted with church.id ("church_ch001")
     val churchB = sampleChurches[1] // salted with church.code ("ETG01")

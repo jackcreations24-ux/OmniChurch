@@ -95,6 +95,13 @@ class OmniChurchRepository(
   ): Result<AuthenticatedMemberSession> =
     authRepository.authenticateMemberWithPin(selectedChurchId, idOrPhone, enteredPin)
 
+  suspend fun authenticateMemberSmartWithPin(
+    selectedChurchId: String?,
+    idOrPhone: String,
+    enteredPin: String,
+  ): Result<AuthRepository.MemberAutoLoginResolution> =
+    authRepository.authenticateMemberSmartWithPin(selectedChurchId, idOrPhone, enteredPin)
+
   suspend fun findMemberByLinkedGoogleEmail(
     selectedChurchId: String?,
     googleEmailInput: String,

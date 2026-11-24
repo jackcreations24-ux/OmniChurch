@@ -722,6 +722,9 @@ object OmniAuthEvaluator {
   fun memberNotFoundMessage(idOrPhone: String, churchName: String): String =
     "Pa gen okenn manm ki anrejistre avèk ID/Telefòn \"${idOrPhone.trim()}\" nan legliz $churchName."
 
+  fun memberNotFoundGloballyMessage(idOrPhone: String): String =
+    "Pa gen okenn manm ki anrejistre avèk ID/Telefòn \"${idOrPhone.trim()}\". Verifye ID Matrikil oswa nimewo telefòn ou."
+
   fun resolveChurchForMemberLogin(
     churches: List<Church>,
     selectedChurchId: String?,
@@ -802,23 +805,10 @@ object OmniAuthEvaluator {
     val matchedMember =
       churchMembers
         .filter { doesMemberBelongToChurch(it, church) }
-        .firstOrNull { member ->
-          val memMatrikilUpper = (member.memberId ?: "").trim().uppercase()
-          val memCodeUpper = member.memberCode.trim().uppercase()
-          val memDocIdUpper = member.id.trim().uppercase()
-          val memPhoneDigits = (member.phone ?: "").replace(Regex("[^0-9]"), "")
-          val memEmailUpper = (member.email ?: "").trim().uppercase()
-
-          val isMatrikilMatch =
-            (memMatrikilUpper.isNotEmpty() && memMatrikilUpper == cleanUpper) ||
-              (memCodeUpper.isNotEmpty() && memCodeUpper == cleanUpper)
-          val isInternalIdMatch = memDocIdUpper.isNotEmpty() && memDocIdUpper == cleanUpper
-          val isPhoneMatch =
-            inputDigits.length >= 7 && memPhoneDigits.length >= 7 && memPhoneDigits == inputDigits
-          val isEmailMatch = memEmailUpper.isNotEmpty() && memEmailUpper == cleanUpper
-
-          isMatrikilMatch || isInternalIdMatch || isPhoneMatch || isEmailMatch
-        }
+        .firstOrNull { member -> doesMemberMatchIdentifier(member, cleanInput, allowSuffixMatch = false) }
+        ?: churchMembers
+          .filter { doesMemberBelongToChurch(it, church) }
+          .firstOrNull { member -> doesMemberMatchIdentifier(member, cleanInput, allowSuffixMatch = true) }
 
     if (matchedMember == null) {
       return Result.failure(
@@ -831,6 +821,137 @@ object OmniAuthEvaluator {
     }
 
     return Result.success(AuthenticatedMemberSession(church = church, member = matchedMember))
+  }
+
+  fun doesMemberMatchIdentifier(
+    member: Member,
+    idOrPhone: String,
+    allowSuffixMatch: Boolean = false,
+  ): Boolean {
+    val cleanInput = idOrPhone.trim()
+    if (cleanInput.isEmpty()) return false
+
+    val cleanUpper = cleanInput.uppercase()
+    val inputDigits = cleanInput.replace(Regex("[^0-9]"), "")
+
+    val memMatrikilUpper = (member.memberId ?: "").trim().uppercase()
+    val memCodeUpper = member.memberCode.trim().uppercase()
+    val memDocIdUpper = member.id.trim().uppercase()
+    val memPhoneDigits = (member.phone ?: "").replace(Regex("[^0-9]"), "")
+    val memEmailUpper = (member.email ?: "").trim().uppercase()
+    val memGoogleEmailUpper = (member.googleEmail ?: "").trim().uppercase()
+
+    val isMatrikilMatch =
+      (memMatrikilUpper.isNotEmpty() && memMatrikilUpper == cleanUpper) ||
+        (memCodeUpper.isNotEmpty() && memCodeUpper == cleanUpper)
+    val isInternalIdMatch = memDocIdUpper.isNotEmpty() && memDocIdUpper == cleanUpper
+    val isPhoneMatch =
+      inputDigits.length >= 7 && memPhoneDigits.length >= 7 && memPhoneDigits == inputDigits
+    val isEmailMatch =
+      (memEmailUpper.isNotEmpty() && memEmailUpper == cleanUpper) ||
+        (memGoogleEmailUpper.isNotEmpty() && memGoogleEmailUpper == cleanUpper)
+    val isSuffixMatch =
+      allowSuffixMatch &&
+        cleanUpper.length >= 4 &&
+        !cleanUpper.contains("-") &&
+        ((memMatrikilUpper.isNotEmpty() && memMatrikilUpper.endsWith("-$cleanUpper")) ||
+          (memCodeUpper.isNotEmpty() && memCodeUpper.endsWith("-$cleanUpper")))
+
+    return isMatrikilMatch || isInternalIdMatch || isPhoneMatch || isEmailMatch || isSuffixMatch
+  }
+
+  fun resolveChurchForMatchedMember(
+    member: Member,
+    churches: List<Church>,
+  ): Church {
+    return churches.firstOrNull { doesMemberBelongToChurch(member, it) }
+      ?: Church(
+        id = member.churchId.trim(),
+        code = member.churchId.trim(),
+        name = member.churchName.trim().ifBlank { "OmniChurch Pro" },
+        logoUrl = member.churchLogoUrl,
+      )
+  }
+
+  fun authenticateMemberAutoResolving(
+    churches: List<Church>,
+    allMembers: List<Member>,
+    idOrPhone: String?,
+    enteredPin: String?,
+    selectedChurchId: String? = null,
+  ): Result<List<AuthenticatedMemberSession>> {
+    val cleanInput = (idOrPhone ?: "").trim()
+    val cleanPin = (enteredPin ?: "").trim()
+    val cleanSelectedChurchId = (selectedChurchId ?: "").trim()
+
+    if (cleanInput.isEmpty()) {
+      return Result.failure(OmniAuthException(ERROR_EMPTY_ID))
+    }
+    if (cleanPin.isEmpty()) {
+      return Result.failure(OmniAuthException(ERROR_EMPTY_PIN))
+    }
+
+    if (cleanSelectedChurchId.isNotEmpty()) {
+      val explicitChurch = resolveChurchForMemberLogin(churches, cleanSelectedChurchId, cleanInput)
+      return authenticateMemberFromList(
+        church = explicitChurch,
+        churchMembers = allMembers,
+        idOrPhone = cleanInput,
+        enteredPin = cleanPin,
+      ).map { listOf(it) }
+    }
+
+    val prefixedChurch = resolveChurchForMemberLogin(churches, null, cleanInput)
+    val scopedCandidates =
+      if (prefixedChurch != null) {
+        val churchScoped =
+          allMembers.filter {
+            doesMemberBelongToChurch(it, prefixedChurch) &&
+              doesMemberMatchIdentifier(it, cleanInput, allowSuffixMatch = false)
+          }
+        churchScoped.ifEmpty {
+          allMembers.filter { doesMemberMatchIdentifier(it, cleanInput, allowSuffixMatch = false) }
+        }
+      } else {
+        allMembers.filter { doesMemberMatchIdentifier(it, cleanInput, allowSuffixMatch = false) }
+      }
+
+    val identifierMatches =
+      scopedCandidates.ifEmpty {
+        allMembers.filter { doesMemberMatchIdentifier(it, cleanInput, allowSuffixMatch = true) }
+      }
+
+    if (identifierMatches.isEmpty()) {
+      return Result.failure(OmniAuthException(memberNotFoundGloballyMessage(cleanInput)))
+    }
+
+    val pinVerified = identifierMatches.filter { verifyMemberPin(it, cleanPin) }
+    if (pinVerified.isEmpty()) {
+      return Result.failure(OmniAuthException(ERROR_WRONG_PIN))
+    }
+
+    val activeVerified =
+      pinVerified.filter { member ->
+        val st = member.effectiveStatus.lowercase()
+        st != "suspended" && st != "inactive"
+      }
+    if (activeVerified.isEmpty()) {
+      return Result.failure(
+        OmniAuthException("Kont manm sa a sispann oswa pa aktif. Kontakte administratè legliz ou a.")
+      )
+    }
+
+    val resolvedSessions =
+      activeVerified
+        .map { member ->
+          AuthenticatedMemberSession(
+            church = resolveChurchForMatchedMember(member, churches),
+            member = member,
+          )
+        }
+        .distinctBy { it.church.id.trim().uppercase().ifEmpty { it.member.id } }
+
+    return Result.success(resolvedSessions)
   }
 
   fun verifyMemberPin(member: Member, enteredPin: String?): Boolean {

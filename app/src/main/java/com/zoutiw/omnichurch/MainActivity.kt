@@ -226,6 +226,7 @@ fun OmniChurchRootHost(
   val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
   val rememberedAdminCredentials by viewModel.rememberedAdminCredentials.collectAsStateWithLifecycle()
   val pendingAdminOwnedChurches by viewModel.pendingAdminOwnedChurches.collectAsStateWithLifecycle()
+  val pendingMemberMatchedSessions by viewModel.pendingMemberMatchedSessions.collectAsStateWithLifecycle()
   val isAuthenticating by viewModel.isAuthenticating.collectAsStateWithLifecycle()
   val actionFeedbackMessage by viewModel.actionFeedbackMessage.collectAsStateWithLifecycle()
 
@@ -327,6 +328,13 @@ fun OmniChurchRootHost(
       },
       onCancelOwnedAdminChurchSelection = {
         viewModel.cancelOwnedAdminChurchSelection()
+      },
+      pendingMemberMatchedSessions = pendingMemberMatchedSessions,
+      onSelectMatchedMemberSession = { matchedSession ->
+        viewModel.selectMatchedMemberSession(matchedSession)
+      },
+      onCancelMatchedMemberChurchSelection = {
+        viewModel.cancelMatchedMemberChurchSelection()
       },
       onSendAdminPasswordReset = { email, onSent, onError ->
         viewModel.sendAdminPasswordResetEmail(

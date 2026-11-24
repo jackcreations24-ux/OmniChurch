@@ -85,6 +85,7 @@ import com.zoutiw.omnichurch.core.legal.LegalLinksRepository
 import com.zoutiw.omnichurch.core.utilities.BiometricQuickUnlockHelper
 import com.zoutiw.omnichurch.core.utilities.RememberedAdminCredentials
 import com.zoutiw.omnichurch.core.utilities.findActivity
+import com.zoutiw.omnichurch.data.models.AuthenticatedMemberSession
 import com.zoutiw.omnichurch.data.models.Church
 import com.zoutiw.omnichurch.data.models.OmniAuthEvaluator
 import com.zoutiw.omnichurch.data.models.OmniSessionState
@@ -281,6 +282,9 @@ fun OmniChurchAuthPortalScreen(
   onLoginAdminSmartWithGoogle: () -> Unit = {},
   onSelectOwnedAdminChurch: (Church) -> Unit = {},
   onCancelOwnedAdminChurchSelection: () -> Unit = {},
+  pendingMemberMatchedSessions: List<AuthenticatedMemberSession> = emptyList(),
+  onSelectMatchedMemberSession: (AuthenticatedMemberSession) -> Unit = {},
+  onCancelMatchedMemberChurchSelection: () -> Unit = {},
   onSendAdminPasswordReset: (
     email: String,
     onSent: (String) -> Unit,
@@ -353,6 +357,20 @@ fun OmniChurchAuthPortalScreen(
       "es" -> "Carga automática de tu iglesia • Datos aislados"
       else -> "Chajman otomatik legliz pa ou • Done 100% izole"
     }
+  val autoMemberBadgeLabel =
+    when (normalizedLang) {
+      "fr" -> "Reconnaissance automatique de votre église par ID • Données isolées"
+      "en" -> "Auto-detects your church from your ID • Isolated tenant data"
+      "es" -> "Detecta tu iglesia automáticamente por tu ID • Datos aislados"
+      else -> "Rekonesans otomatik legliz pa ou ak ID ou • Done 100% izole"
+    }
+  val memberSubtitleText =
+    when (normalizedLang) {
+      "fr" -> "Entrez votre ID Matricule ou téléphone et votre code PIN. Votre église sera reconnue automatiquement."
+      "en" -> "Enter your Member ID or phone number and PIN. Your church will be detected automatically."
+      "es" -> "Ingresa tu ID de miembro o teléfono y tu PIN. Tu iglesia se detectará automáticamente."
+      else -> "Antre ID Matrikil oswa telefòn ou ak Kòd PIN ou. Sistèm lan ap rekonèt legliz pa ou otomatikman."
+    }
   val ownedChurchesSheetTitle =
     when (normalizedLang) {
       "fr" -> "Choisissez votre église"
@@ -367,6 +385,13 @@ fun OmniChurchAuthPortalScreen(
       "es" -> "Tu cuenta administra varias iglesias. Selecciona la que deseas abrir:"
       else -> "Kont ou a jere plizyè legliz. Chwazi legliz ou vle ouvri kounye a :"
     }
+  val memberMatchedChurchesSubtitle =
+    when (normalizedLang) {
+      "fr" -> "Votre profil membre est vérifié dans ces églises. Choisissez celle que vous souhaitez ouvrir :"
+      "en" -> "Your member profile is verified in these churches. Select the one you want to open:"
+      "es" -> "Tu perfil de miembro está verificado en estas iglesias. Selecciona la que deseas abrir:"
+      else -> "Pwofil manm ou an verifye nan legliz sa yo. Chwazi legliz ou vle ouvri kounye a :"
+    }
 
   LaunchedEffect(rememberedAdminCredentials) {
     rememberAdminMe = rememberedAdminCredentials.rememberEnabled
@@ -379,8 +404,8 @@ fun OmniChurchAuthPortalScreen(
     }
   }
 
-  LaunchedEffect(churches) {
-    if (selectedChurchId == null && churches.size == 1) {
+  LaunchedEffect(churches, isMemberMode) {
+    if (!isMemberMode && selectedChurchId == null && churches.size == 1) {
       selectedChurchId = churches.first().id
     }
   }
@@ -574,7 +599,7 @@ fun OmniChurchAuthPortalScreen(
           Text(
             text =
               if (isMemberMode) {
-                "Antre ID Matrikil ou ak Kòd Sekirite (PIN) administrasyon legliz la ba ou a. Ou pa bezwen kont Google."
+                memberSubtitleText
               } else if (isAdminEmailMode) {
                 "Konekte ak imèl ak modpas kont legliz la pou jere manm yo, sèvis yo ak prezans yo."
               } else {
@@ -590,7 +615,7 @@ fun OmniChurchAuthPortalScreen(
             textAlign = TextAlign.Center,
           )
 
-          val showPublicChurchSelector = isMemberMode || (!isAdminEmailMode && showLegacyAdminCodeFallback)
+          val showPublicChurchSelector = !isMemberMode && !isAdminEmailMode && showLegacyAdminCodeFallback
           if (showPublicChurchSelector) {
             Box(
               modifier =
@@ -675,7 +700,7 @@ fun OmniChurchAuthPortalScreen(
                   .background(DeepNavy.copy(alpha = 0.72f))
                   .border(1.dp, SuccessGreen.copy(alpha = 0.38f), RoundedCornerShape(14.dp))
                   .padding(horizontal = 12.dp, vertical = 9.dp)
-                  .testTag("admin_auto_church_badge"),
+                  .testTag(if (isMemberMode) "member_auto_church_badge" else "admin_auto_church_badge"),
               verticalAlignment = Alignment.CenterVertically,
               horizontalArrangement = Arrangement.Center,
             ) {
@@ -687,7 +712,7 @@ fun OmniChurchAuthPortalScreen(
               )
               Spacer(modifier = Modifier.width(8.dp))
               Text(
-                text = autoChurchBadgeLabel,
+                text = if (isMemberMode) autoMemberBadgeLabel else autoChurchBadgeLabel,
                 style = MaterialTheme.typography.labelMedium,
                 color = GlassWhite.copy(alpha = 0.92f),
                 fontWeight = FontWeight.Medium,
@@ -760,7 +785,7 @@ fun OmniChurchAuthPortalScreen(
                   localError = null
                   onClearFeedback()
                   onLoginMemberWithPin(
-                    resolvedChurch?.id ?: selectedChurchId,
+                    null,
                     matrikilOrPhoneInput,
                     memberPinInput,
                   )
@@ -811,7 +836,7 @@ fun OmniChurchAuthPortalScreen(
                   scope = scope,
                   onSuccess = { googlePayload ->
                     onOptionalGoogleMemberSignIn(
-                      resolvedChurch?.id ?: selectedChurchId,
+                      null,
                       googlePayload,
                       {
                         pendingGoogleLinkPayload = googlePayload
@@ -1462,7 +1487,7 @@ fun OmniChurchAuthPortalScreen(
           isPrimaryNeon = true,
           onClick = {
             onLinkGoogleWithMatrikilPin(
-              resolvedChurch?.id ?: selectedChurchId,
+              null,
               linkMatrikilInput,
               linkPinInput,
               googlePayload,
@@ -1549,6 +1574,106 @@ fun OmniChurchAuthPortalScreen(
                       listOfNotNull(
                         ownedChurch.effectiveCode.takeIf { it.isNotBlank() },
                         ownedChurch.city?.takeIf { it.isNotBlank() },
+                      ).joinToString(" • ")
+                    if (subtitle.isNotBlank()) {
+                      Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = BrandGold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                      )
+                    }
+                  }
+                }
+                Icon(
+                  imageVector = Icons.Default.VerifiedUser,
+                  contentDescription = null,
+                  tint = SuccessGreen,
+                  modifier = Modifier.size(20.dp),
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (pendingMemberMatchedSessions.isNotEmpty()) {
+    GlassModalBottomSheet(onDismissRequest = onCancelMatchedMemberChurchSelection) {
+      Column(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          OmniChurchLogo(
+            variant = LogoVariant.Icon,
+            modifier = Modifier.size(28.dp),
+            contentDescription = "OmniChurch PRO",
+          )
+          Text(
+            text = ownedChurchesSheetTitle,
+            style = MaterialTheme.typography.titleLarge,
+            color = PureWhite,
+            fontWeight = FontWeight.Bold,
+          )
+        }
+        Text(
+          text = memberMatchedChurchesSubtitle,
+          style = MaterialTheme.typography.bodySmall,
+          color = GlassWhite.copy(alpha = 0.88f),
+        )
+        Column(
+          modifier =
+            Modifier.fillMaxWidth()
+              .heightIn(max = 380.dp)
+              .verticalScroll(rememberScrollState()),
+          verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          pendingMemberMatchedSessions.forEach { matchedSession ->
+            val matchedChurch = matchedSession.church
+            val matchedMember = matchedSession.member
+            PremiumGlassCard(
+              cornerRadius = 16.dp,
+              isHighlighted = true,
+              accentColor = BlueNeon,
+              onClick = { onSelectMatchedMemberSession(matchedSession) },
+              contentPadding = PaddingValues(14.dp),
+              modifier = Modifier.testTag("matched_member_church_item_${matchedChurch.id}"),
+            ) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+              ) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.weight(1f),
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.AccountBalance,
+                    contentDescription = null,
+                    tint = BrandGold,
+                    modifier = Modifier.size(22.dp),
+                  )
+                  Spacer(modifier = Modifier.width(12.dp))
+                  Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                      text = matchedChurch.name,
+                      style = MaterialTheme.typography.titleMedium,
+                      color = PureWhite,
+                      fontWeight = FontWeight.Bold,
+                      maxLines = 1,
+                      overflow = TextOverflow.Ellipsis,
+                    )
+                    val subtitle =
+                      listOfNotNull(
+                        matchedChurch.effectiveCode.takeIf { it.isNotBlank() },
+                        matchedMember.effectiveMatrikil.takeIf { it.isNotBlank() },
                       ).joinToString(" • ")
                     if (subtitle.isNotBlank()) {
                       Text(
