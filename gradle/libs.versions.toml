@@ -45,6 +45,7 @@ mlkitBarcodeScanning = "17.3.0"
 zxingCore = "3.5.3"
 coroutinesPlayServices = "1.10.2"
 playServicesAds = "23.6.0"
+browser = "1.8.0"
 
 
 [libraries]
@@ -104,6 +105,7 @@ mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning"
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxingCore" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutinesPlayServices" }
 play-services-ads = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "playServicesAds" }
+androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 
 
 [plugins]

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -46,8 +47,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -75,12 +81,14 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.zoutiw.omnichurch.R
+import com.zoutiw.omnichurch.core.legal.LegalLinksRepository
 import com.zoutiw.omnichurch.core.utilities.BiometricQuickUnlockHelper
 import com.zoutiw.omnichurch.core.utilities.RememberedAdminCredentials
 import com.zoutiw.omnichurch.core.utilities.findActivity
 import com.zoutiw.omnichurch.data.models.Church
 import com.zoutiw.omnichurch.data.models.OmniAuthEvaluator
 import com.zoutiw.omnichurch.data.models.OmniSessionState
+import com.zoutiw.omnichurch.presentation.components.AuthLegalFooter
 import com.zoutiw.omnichurch.presentation.components.GlassButton
 import com.zoutiw.omnichurch.presentation.components.GlassInputField
 import com.zoutiw.omnichurch.presentation.components.GlassModalBottomSheet
@@ -286,6 +294,9 @@ fun OmniChurchAuthPortalScreen(
   val context = remember(rawContext) { rawContext.findActivity() ?: rawContext }
   val scope = rememberCoroutineScope()
   val credentialManager = remember(context) { CredentialManager.create(context) }
+  val legalLinksRepository = remember(rawContext) { LegalLinksRepository.getInstance(rawContext) }
+  val legalLinks by legalLinksRepository.legalLinksState.collectAsStateWithLifecycle()
+  val snackbarHostState = remember { SnackbarHostState() }
 
   var isMemberMode by remember { mutableStateOf(true) }
   var isAdminEmailMode by remember { mutableStateOf(true) }
@@ -399,6 +410,7 @@ fun OmniChurchAuthPortalScreen(
         Modifier.fillMaxSize()
           .statusBarsPadding()
           .navigationBarsPadding()
+          .imePadding()
           .verticalScroll(rememberScrollState())
           .padding(horizontal = 20.dp, vertical = 14.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
@@ -1200,16 +1212,36 @@ fun OmniChurchAuthPortalScreen(
             }
           }
 
-          Spacer(modifier = Modifier.height(6.dp))
+          Spacer(modifier = Modifier.height(16.dp))
 
-          Text(
-            text = "OmniChurch Pro • Kreyasyon legliz fèt pa administratè yo sou platfòm Web la",
-            style = MaterialTheme.typography.labelSmall,
-            color = MutedGlassText,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+          AuthLegalFooter(
+            legalLinks = legalLinks,
+            languageCode = normalizedLang,
+            onUnavailableMessage = { message ->
+              scope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarHostState.showSnackbar(message)
+              }
+            },
+            modifier = Modifier.padding(horizontal = 8.dp),
           )
         }
+      }
+
+      SnackbarHost(
+        hostState = snackbarHostState,
+        modifier =
+          Modifier.align(Alignment.BottomCenter)
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+      ) { data ->
+        Snackbar(
+          snackbarData = data,
+          containerColor = Color(0xFF0F172A),
+          contentColor = PureWhite,
+          shape = RoundedCornerShape(14.dp),
+        )
       }
     }
 
