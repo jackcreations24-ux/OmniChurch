@@ -469,6 +469,34 @@ fun OmniChurchAuthPortalScreen(
       "es" -> "Google Admin"
       else -> "Google Admin"
     }
+  val memberTabLabel =
+    when (normalizedLang) {
+      "fr" -> "Espace Membre"
+      "en" -> "Member Area"
+      "es" -> "Área Miembro"
+      else -> "Espas Manm"
+    }
+  val adminTabLabel =
+    when (normalizedLang) {
+      "fr" -> "Espace Admin"
+      "en" -> "Admin Area"
+      "es" -> "Área Admin"
+      else -> "Espas Admin"
+    }
+  val memberIdPlaceholder =
+    when (normalizedLang) {
+      "fr" -> "Ex: CH001-JD4827 ou 509..."
+      "en" -> "Ex: CH001-JD4827 or 509..."
+      "es" -> "Ej: CH001-JD4827 o 509..."
+      else -> "Egzanp: CH001-JD4827 oswa 509..."
+    }
+  val memberPinPlaceholder =
+    when (normalizedLang) {
+      "fr" -> "Entrez le PIN fourni par l'administrateur"
+      "en" -> "Enter the PIN given by administrator"
+      "es" -> "Ingresa el PIN dado por el administrador"
+      else -> "Antre PIN administratè a ba ou a"
+    }
 
   LaunchedEffect(rememberedAdminCredentials) {
     rememberAdminMe = rememberedAdminCredentials.rememberEnabled
@@ -611,7 +639,7 @@ fun OmniChurchAuthPortalScreen(
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-              text = "Espas Manm",
+              text = memberTabLabel,
               style = MaterialTheme.typography.labelLarge,
               color = if (isMemberMode) PureWhite else MutedGlassText,
               fontWeight = FontWeight.Bold,
@@ -648,7 +676,7 @@ fun OmniChurchAuthPortalScreen(
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-              text = "Espas Admin",
+              text = adminTabLabel,
               style = MaterialTheme.typography.labelLarge,
               color = if (!isMemberMode) DeepNavy else MutedGlassText,
               fontWeight = FontWeight.Bold,
@@ -826,7 +854,7 @@ fun OmniChurchAuthPortalScreen(
                 onClearFeedback()
               },
               label = memberIdInputLabel,
-              placeholder = "Egzanp: CH001-JD4827 oswa 509...",
+              placeholder = memberIdPlaceholder,
               leadingIcon = Icons.Default.Badge,
               testTag = "member_matrikil_input",
             )
@@ -839,7 +867,7 @@ fun OmniChurchAuthPortalScreen(
                 onClearFeedback()
               },
               label = memberPinInputLabel,
-              placeholder = "Antre PIN administratè a ba ou a",
+              placeholder = memberPinPlaceholder,
               leadingIcon = Icons.Default.Key,
               visualTransformation = PasswordVisualTransformation(),
               keyboardType = KeyboardType.Password,
@@ -853,7 +881,7 @@ fun OmniChurchAuthPortalScreen(
               )
             } else {
               GlassButton(
-                text = "Konekte",
+                text = connectButtonText,
                 icon = Icons.Default.VerifiedUser,
                 isPrimaryNeon = true,
                 isLoading = isAuthenticating,

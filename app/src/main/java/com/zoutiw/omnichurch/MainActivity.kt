@@ -1,5 +1,6 @@
 package com.zoutiw.omnichurch
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -7,9 +8,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -33,6 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,6 +76,7 @@ import com.zoutiw.omnichurch.core.ads.AdMobRemoteController
 import com.zoutiw.omnichurch.core.network.FirestoreProvider
 import com.zoutiw.omnichurch.core.network.NamedFirestoreProvider
 import com.zoutiw.omnichurch.core.utilities.LocaleHelper
+import com.zoutiw.omnichurch.core.utilities.LocaleManager
 import com.zoutiw.omnichurch.core.utilities.NfcIntentBus
 import com.zoutiw.omnichurch.core.utilities.OmniPreferencesManager
 import com.zoutiw.omnichurch.core.utilities.findActivity
@@ -146,22 +154,38 @@ class MainActivity : ComponentActivity() {
       val activityContext = this@MainActivity
       val preferencesManager =
         remember(activityContext) { OmniPreferencesManager(activityContext.applicationContext) }
+      val localeManager =
+        remember(activityContext) { LocaleManager(activityContext.applicationContext) }
+      val initialSavedLang =
+        remember(activityContext) {
+          try {
+            activityContext.applicationContext
+              .getSharedPreferences("omnichurch_prefs", Context.MODE_PRIVATE)
+              .getString("omnichurch_lang_v1", LocaleManager.DEFAULT_LANGUAGE)
+              ?.takeIf { it in LocaleManager.SUPPORTED_LANGUAGES }
+              ?: LocaleManager.DEFAULT_LANGUAGE
+          } catch (_: Exception) {
+            LocaleManager.DEFAULT_LANGUAGE
+          }
+        }
       val languageCode by
         preferencesManager.languageCodeFlow.collectAsStateWithLifecycle(
-          initialValue = "ht"
+          initialValue = initialSavedLang
         )
 
-      remember(languageCode) {
-        LocaleHelper.applyLocale(activityContext, languageCode)
-        languageCode
-      }
+      val localizedContext =
+        remember(activityContext, languageCode) {
+          localeManager.updateRuntimeConfiguration(activityContext, languageCode)
+        }
 
-      key(languageCode) {
-        OmniChurchTheme {
-          OmniChurchRootHost(
-            preferencesManager = preferencesManager,
-            currentLanguageCode = languageCode,
-          )
+      CompositionLocalProvider(LocalContext provides localizedContext) {
+        key(languageCode) {
+          OmniChurchTheme {
+            OmniChurchRootHost(
+              preferencesManager = preferencesManager,
+              currentLanguageCode = languageCode,
+            )
+          }
         }
       }
     }
@@ -400,6 +424,40 @@ private fun AuthenticatedOmniChurchWorkspace(
   val navController = rememberNavController()
   val navBackStackEntry by navController.currentBackStackEntryAsState()
   val currentRoute = navBackStackEntry?.destination?.route ?: OmniRoutes.HOME
+  var isChromeVisible by remember { mutableStateOf(true) }
+
+  LaunchedEffect(currentRoute) {
+    isChromeVisible = true
+  }
+
+  val navigateToTab: (String) -> Unit = { targetRoute ->
+    isChromeVisible = true
+    if (currentRoute != targetRoute) {
+      if (targetRoute == OmniRoutes.HOME) {
+        val poppedToHome = navController.popBackStack(OmniRoutes.HOME, inclusive = false)
+        if (!poppedToHome) {
+          navController.navigate(OmniRoutes.HOME) {
+            popUpTo(navController.graph.startDestinationId) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+          }
+        }
+      } else {
+        navController.navigate(targetRoute) {
+          popUpTo(navController.graph.startDestinationId) { saveState = true }
+          launchSingleTop = true
+          restoreState = true
+        }
+      }
+    }
+  }
+
+  val navigateBackOrHome: () -> Unit = {
+    isChromeVisible = true
+    if (!navController.popBackStack()) {
+      navigateToTab(OmniRoutes.HOME)
+    }
+  }
 
   LaunchedEffect(actionFeedbackMessage) {
     val msg = actionFeedbackMessage
@@ -471,23 +529,14 @@ private fun AuthenticatedOmniChurchWorkspace(
     signOutOmniChurch(credentialManager, scope)
   }
 
-  when (val memberUi = currentMemberState) {
-    is UiState.Loading -> {
-      Box(
-        modifier = Modifier.fillMaxSize().background(OmniBrushes.DeepBackgroundGradient),
-        contentAlignment = Alignment.Center,
-      ) {
-        GlassLoadingIndicator()
-      }
+  if (currentMemberState is UiState.Loading && member == null && !isAdminSession && sessionState.activeMemberDocId.isBlank() && sessionState.activeMemberId.isBlank()) {
+    Box(
+      modifier = Modifier.fillMaxSize().background(OmniBrushes.DeepBackgroundGradient),
+      contentAlignment = Alignment.Center,
+    ) {
+      GlassLoadingIndicator()
     }
-    is UiState.Success -> {
-      if (memberUi.data == null && !isAdminSession) {
-        UnlinkedMemberAccountView(
-          title = "Pwofil Manm Pa Jwenn",
-          message = "Kont sa a pa asosye ak okenn manm nan legliz sa a. Pou sekirite, kreyasyon manm fèt sèlman sou platfòm Web OmniChurch la oswa pa administratè legliz la. Tanpri konekte ak ID Matrikil + PIN ou.",
-          onSignOut = performFullSignOut,
-        )
-      } else {
+  } else {
         Box(
           modifier =
             Modifier.fillMaxSize()
@@ -526,10 +575,14 @@ private fun AuthenticatedOmniChurchWorkspace(
                     navController.navigate(OmniRoutes.MEMBER_QR_GALLERY)
                   }
                 },
-                onOpenServices = { navController.navigate(OmniRoutes.SERVICES) },
-                onOpenNotifications = { navController.navigate(OmniRoutes.NOTIFICATIONS) },
-                onOpenProfile = { navController.navigate(OmniRoutes.PROFILE_SETTINGS) },
-                onOpenMemberList = { navController.navigate(OmniRoutes.ADMIN_MEMBER_LIST) },
+                onOpenServices = { navigateToTab(OmniRoutes.SERVICES) },
+                onOpenNotifications = { navigateToTab(OmniRoutes.NOTIFICATIONS) },
+                onOpenProfile = { navigateToTab(OmniRoutes.PROFILE_SETTINGS) },
+                onOpenMemberList = {
+                  navController.navigate(OmniRoutes.ADMIN_MEMBER_LIST) {
+                    launchSingleTop = true
+                  }
+                },
                 onReactToItem = { targetId, isService, reactionType ->
                   viewModel.reactToFeedItem(
                     targetId = targetId,
@@ -648,6 +701,8 @@ private fun AuthenticatedOmniChurchWorkspace(
                 activeChurchName = resolvedChurchName,
                 activeChurchLogoUrl = resolvedChurchLogoUrl,
                 currentLanguageCode = currentLanguageCode,
+                isChromeVisible = isChromeVisible,
+                onChromeVisibilityChange = { visible -> isChromeVisible = visible },
               )
             }
 
@@ -699,7 +754,7 @@ private fun AuthenticatedOmniChurchWorkspace(
                   viewModel.selectScannerService(serviceId)
                   navController.navigate(OmniRoutes.ADMIN_QR_SCANNER)
                 },
-                onBackClick = { navController.popBackStack() },
+                onBackClick = navigateBackOrHome,
                 onDeleteService = { serviceId -> viewModel.deleteService(serviceId) },
                 isAdminSession = isAdminSession,
                 canCreateService = isAdminSession,
@@ -756,6 +811,8 @@ private fun AuthenticatedOmniChurchWorkspace(
                 churchMembers = churchMembers,
                 activeChurchLogoUrl = resolvedChurchLogoUrl,
                 currentLanguageCode = currentLanguageCode,
+                isChromeVisible = isChromeVisible,
+                onChromeVisibilityChange = { visible -> isChromeVisible = visible },
               )
             }
 
@@ -893,7 +950,7 @@ private fun AuthenticatedOmniChurchWorkspace(
                 notificationsState = notificationsState,
                 onMarkRead = { notifId -> viewModel.markNotificationAsRead(notifId) },
                 onMarkAllRead = { list -> viewModel.markAllNotificationsRead(list) },
-                onBackClick = { navController.popBackStack() },
+                onBackClick = navigateBackOrHome,
                 isAdmin = isAdminSession,
                 canPublishAnnouncement = isAdminSession,
                 canEditAnnouncement = isAdminSession,
@@ -1008,6 +1065,8 @@ private fun AuthenticatedOmniChurchWorkspace(
                 onDeleteAnnouncement = { announcementId ->
                   viewModel.deleteAnnouncement(announcementId)
                 },
+                isChromeVisible = isChromeVisible,
+                onChromeVisibilityChange = { visible -> isChromeVisible = visible },
               )
             }
 
@@ -1017,13 +1076,16 @@ private fun AuthenticatedOmniChurchWorkspace(
                 member = member,
                 currentLanguageCode = currentLanguageCode,
                 onLanguageChange = { newLang ->
-                  scope.launch { preferencesManager.setLanguageCode(newLang) }
+                  scope.launch {
+                    preferencesManager.setLanguageCode(newLang)
+                    LocaleManager(context.applicationContext).savePreferredLanguage(newLang)
+                  }
                 },
                 onSaveMemberChanges = { fullName, department, role ->
                   viewModel.updateMemberProfileInfo(fullName, department, role) {}
                 },
                 onSignOut = performFullSignOut,
-                onBackClick = { navController.popBackStack() },
+                onBackClick = navigateBackOrHome,
                 biometricEnabled = sessionState.biometricEnabled,
                 onToggleBiometric = { enabled -> viewModel.toggleBiometricQuickUnlock(enabled) },
                 onLinkGoogleAccount = { payload ->
@@ -1032,11 +1094,37 @@ private fun AuthenticatedOmniChurchWorkspace(
                     googleUid = payload.uid,
                     googlePhotoUrl = payload.photoUrl,
                     onSuccess = {
-                      viewModel.setFeedbackMessage("Kont Google (${payload.email}) lye avèk siksè!")
+                      viewModel.setFeedbackMessage(
+                        when (currentLanguageCode.lowercase()) {
+                          "fr" -> "Compte Google (${payload.email}) lié avec succès !"
+                          "en" -> "Google account (${payload.email}) linked successfully!"
+                          "es" -> "¡Cuenta de Google (${payload.email}) vinculada con éxito!"
+                          else -> "Kont Google (${payload.email}) lye avèk siksè!"
+                        }
+                      )
                     },
                     onError = { err -> viewModel.setFeedbackMessage(err) },
                   )
                 },
+                onUpdateMemberPhoto =
+                  if (member != null) {
+                    { newPhotoUrl ->
+                      viewModel.updateMemberPhoto(
+                        photoDataUrl = newPhotoUrl,
+                        onSuccess = {
+                          viewModel.setFeedbackMessage(
+                            when (currentLanguageCode.lowercase()) {
+                              "fr" -> "Photo de profil mise à jour avec succès !"
+                              "en" -> "Profile photo updated successfully!"
+                              "es" -> "¡Foto de perfil actualizada con éxito!"
+                              else -> "Foto pwofil ou mete ajou avèk siksè!"
+                            }
+                          )
+                        },
+                        onError = { err -> viewModel.setFeedbackMessage(err) },
+                      )
+                    }
+                  } else null,
                 onRegisterNewMember =
                   if (isAdminSession) {
                     { fullName, customMatrikil, pin, phone, department, ministryRole ->
@@ -1051,7 +1139,12 @@ private fun AuthenticatedOmniChurchWorkspace(
                         ministryRole = ministryRole,
                         onSuccess = { newMem ->
                           viewModel.setFeedbackMessage(
-                            "Manm ${newMem.fullName} anrejistre! ID Matrikil: ${newMem.effectiveMatrikil}"
+                            when (currentLanguageCode.lowercase()) {
+                              "fr" -> "Membre ${newMem.fullName} enregistré ! ID Matricule : ${newMem.effectiveMatrikil}"
+                              "en" -> "Member ${newMem.fullName} registered! Member ID: ${newMem.effectiveMatrikil}"
+                              "es" -> "¡Miembro ${newMem.fullName} registrado! ID Matrícula: ${newMem.effectiveMatrikil}"
+                              else -> "Manm ${newMem.fullName} anrejistre! ID Matrikil: ${newMem.effectiveMatrikil}"
+                            }
                           )
                         },
                         onError = { err -> viewModel.setFeedbackMessage(err) },
@@ -1116,31 +1209,43 @@ private fun AuthenticatedOmniChurchWorkspace(
                 OmniRoutes.PROFILE_SETTINGS,
               )
 
-          if (showBottomBar) {
-            val selectedTab =
-              when (currentRoute) {
-                OmniRoutes.HOME -> OmniNavTab.HOME
-                OmniRoutes.SERVICES -> OmniNavTab.SERVICES
-                OmniRoutes.NOTIFICATIONS -> OmniNavTab.NOTIFICATIONS
-                OmniRoutes.PROFILE_SETTINGS -> OmniNavTab.PROFILE
-                else -> OmniNavTab.MEMBER_CARD_OR_SCANNER
+          val selectedTab =
+            when (currentRoute) {
+              OmniRoutes.HOME -> OmniNavTab.HOME
+              OmniRoutes.SERVICES -> OmniNavTab.SERVICES
+              OmniRoutes.NOTIFICATIONS -> OmniNavTab.NOTIFICATIONS
+              OmniRoutes.PROFILE_SETTINGS -> OmniNavTab.PROFILE
+              else -> OmniNavTab.MEMBER_CARD_OR_SCANNER
+            }
+          val resolvedBottomNavAvatarUrl =
+            member?.effectivePhotoUrl?.trim()?.takeIf { it.isNotEmpty() }
+              ?: userProfile?.photoUrl?.trim()?.takeIf { it.isNotEmpty() }
+              ?: if (isAdminSession) {
+                activeChurch?.adminGooglePhoto?.trim()?.takeIf { it.isNotEmpty() }
+                  ?: adminFirebaseUser?.photoUrl?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                  ?: activeChurch?.logoUrl?.trim()?.takeIf { it.isNotEmpty() }
+              } else {
+                adminFirebaseUser?.photoUrl?.toString()?.trim()?.takeIf { it.isNotEmpty() }
               }
-            val resolvedBottomNavAvatarUrl =
-              member?.effectivePhotoUrl?.trim()?.takeIf { it.isNotEmpty() }
-                ?: userProfile?.photoUrl?.trim()?.takeIf { it.isNotEmpty() }
-                ?: if (isAdminSession) {
-                  activeChurch?.adminGooglePhoto?.trim()?.takeIf { it.isNotEmpty() }
-                    ?: adminFirebaseUser?.photoUrl?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-                    ?: activeChurch?.logoUrl?.trim()?.takeIf { it.isNotEmpty() }
-                } else {
-                  adminFirebaseUser?.photoUrl?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-                }
-            val resolvedBottomNavDisplayName =
-              member?.effectiveFullName?.trim()?.takeIf { it.isNotBlank() }
-                ?: userProfile?.displayName?.trim()?.takeIf { it.isNotBlank() }
-                ?: activeChurch?.adminGoogleName?.trim()?.takeIf { it.isNotBlank() }
-                ?: resolvedAuthorName
+          val resolvedBottomNavDisplayName =
+            member?.effectiveFullName?.trim()?.takeIf { it.isNotBlank() }
+              ?: userProfile?.displayName?.trim()?.takeIf { it.isNotBlank() }
+              ?: activeChurch?.adminGoogleName?.trim()?.takeIf { it.isNotBlank() }
+              ?: resolvedAuthorName
+          val isScannerOrbMode = userProfile?.isAuthorizedScanner == true || isAdminSession
 
+          AnimatedVisibility(
+            visible = showBottomBar && isChromeVisible,
+            enter = slideInVertically(
+              initialOffsetY = { it },
+              animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
+            ) + fadeIn(animationSpec = tween(durationMillis = 120)),
+            exit = slideOutVertically(
+              targetOffsetY = { it },
+              animationSpec = tween(durationMillis = 130, easing = FastOutLinearInEasing),
+            ) + fadeOut(animationSpec = tween(durationMillis = 110)),
+            modifier = Modifier.align(Alignment.BottomCenter),
+          ) {
             GlassBottomNavigation(
               selectedTab = selectedTab,
               unreadNotificationsCount = unreadNotificationsCount,
@@ -1153,25 +1258,27 @@ private fun AuthenticatedOmniChurchWorkspace(
                     OmniNavTab.NOTIFICATIONS -> OmniRoutes.NOTIFICATIONS
                     OmniNavTab.PROFILE -> OmniRoutes.PROFILE_SETTINGS
                   }
-                navController.navigate(targetRoute) {
-                  popUpTo(OmniRoutes.HOME) { saveState = true }
-                  launchSingleTop = true
-                  restoreState = true
-                }
+                navigateToTab(targetRoute)
               },
               onCenterQrOrbClick = {
-                if (userProfile?.isAuthorizedScanner == true || isAdminSession) {
+                isChromeVisible = true
+                if (isScannerOrbMode) {
                   activeAttendanceServices.firstOrNull()?.let {
                     viewModel.selectScannerService(it.id)
                   }
-                  navController.navigate(OmniRoutes.ADMIN_QR_SCANNER)
+                  navController.navigate(OmniRoutes.ADMIN_QR_SCANNER) {
+                    launchSingleTop = true
+                  }
                 } else {
-                  navController.navigate(OmniRoutes.MEMBER_QR_GALLERY)
+                  navController.navigate(OmniRoutes.MEMBER_QR_GALLERY) {
+                    launchSingleTop = true
+                  }
                 }
               },
               userAvatarUrl = resolvedBottomNavAvatarUrl,
               userDisplayName = resolvedBottomNavDisplayName,
-              modifier = Modifier.align(Alignment.BottomCenter),
+              currentLanguageCode = currentLanguageCode,
+              isScannerMode = isScannerOrbMode,
             )
           }
 
@@ -1248,75 +1355,6 @@ private fun AuthenticatedOmniChurchWorkspace(
             )
           }
         }
-      }
-    }
-    is UiState.Error -> {
-      UnlinkedMemberAccountView(
-        title = "Erè nan Chajman",
-        message = memberUi.message.ifBlank { "Gen yon erè ki pase pandan n ap chaje done yo. Tanpri verifye koneksyon entènèt ou epi re-eseye." },
-        onSignOut = performFullSignOut,
-      )
-    }
   }
 }
 
-@Composable
-private fun UnlinkedMemberAccountView(
-  title: String,
-  message: String,
-  onSignOut: () -> Unit,
-  modifier: Modifier = Modifier,
-) {
-  Box(
-    modifier = modifier.fillMaxSize().background(OmniBrushes.DeepBackgroundGradient),
-    contentAlignment = Alignment.Center,
-  ) {
-    Card(
-      modifier = Modifier.padding(24.dp).fillMaxWidth(0.92f),
-      shape = RoundedCornerShape(24.dp),
-      colors = CardDefaults.cardColors(containerColor = DeepNavy.copy(alpha = 0.95f)),
-      border = BorderStroke(1.dp, GlassCardBorderSubtle),
-    ) {
-      Column(
-        modifier = Modifier.padding(28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-      ) {
-        Icon(
-          imageVector = Icons.Default.Info,
-          contentDescription = null,
-          tint = BrandGold,
-          modifier = Modifier.size(54.dp),
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-          text = title,
-          style = MaterialTheme.typography.titleLarge.copy(
-            color = PureWhite,
-            fontWeight = FontWeight.Bold,
-          ),
-          textAlign = TextAlign.Center,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-          text = message,
-          style = MaterialTheme.typography.bodyMedium.copy(
-            color = MutedGlassText,
-            lineHeight = 22.sp,
-          ),
-          textAlign = TextAlign.Center,
-        )
-        Spacer(modifier = Modifier.height(28.dp))
-        Button(
-          onClick = onSignOut,
-          modifier = Modifier.fillMaxWidth().height(52.dp),
-          colors = ButtonDefaults.buttonColors(containerColor = BrandGold),
-          shape = RoundedCornerShape(14.dp),
-        ) {
-          Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = DeepNavy)
-          Spacer(modifier = Modifier.size(8.dp))
-          Text("Dekonekte", color = DeepNavy, fontWeight = FontWeight.Bold)
-        }
-      }
-    }
-  }
-}

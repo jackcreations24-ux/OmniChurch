@@ -152,6 +152,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.zoutiw.omnichurch.R
 import com.zoutiw.omnichurch.core.utilities.ImageCompressor
+import com.zoutiw.omnichurch.core.utilities.OmniLocalization
 import com.zoutiw.omnichurch.data.models.Announcement
 import com.zoutiw.omnichurch.data.models.ChurchService
 import com.zoutiw.omnichurch.data.models.Member
@@ -3894,31 +3895,37 @@ fun rememberFeedChromeNestedScrollConnection(
     }
   }
   return remember(listState, onChromeVisibilityChange) {
-    var accumulatedDy = 0f
     object : NestedScrollConnection {
+      override fun onPreScroll(
+        available: Offset,
+        source: NestedScrollSource,
+      ): Offset {
+        if (!listState.canScrollForward && !listState.canScrollBackward) {
+          return Offset.Zero
+        }
+        val dy = available.y
+        val currentlyAtTop =
+          listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 24
+        if (currentlyAtTop && dy >= 0f) {
+          onChromeVisibilityChange(true)
+        } else if (dy < -10f && !currentlyAtTop) {
+          // Scrolling down into feed: quickly hide header & bottom menu
+          onChromeVisibilityChange(false)
+        } else if (dy > 6f) {
+          // Scrolling up: rapidly re-display header & bottom menu
+          onChromeVisibilityChange(true)
+        }
+        return Offset.Zero
+      }
+
       override fun onPostScroll(
         consumed: Offset,
         available: Offset,
         source: NestedScrollSource,
       ): Offset {
-        val dy = consumed.y
-        if (dy == 0f) return Offset.Zero
-
-        accumulatedDy =
-          if ((accumulatedDy > 0f && dy < 0f) || (accumulatedDy < 0f && dy > 0f)) {
-            dy
-          } else {
-            (accumulatedDy + dy).coerceIn(-120f, 120f)
-          }
-
         val currentlyAtTop =
           listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 24
         if (currentlyAtTop) {
-          onChromeVisibilityChange(true)
-          accumulatedDy = 0f
-        } else if (accumulatedDy < -14f) {
-          onChromeVisibilityChange(false)
-        } else if (accumulatedDy > 8f) {
           onChromeVisibilityChange(true)
         }
         return Offset.Zero
@@ -3944,7 +3951,18 @@ fun GlassBottomNavigation(
   modifier: Modifier = Modifier,
   userAvatarUrl: String? = null,
   userDisplayName: String = "",
+  currentLanguageCode: String = "ht",
+  isScannerMode: Boolean = false,
 ) {
+  val homeLabel = remember(currentLanguageCode) { OmniLocalization.navHome(currentLanguageCode) }
+  val servicesLabel = remember(currentLanguageCode) { OmniLocalization.navServices(currentLanguageCode) }
+  val alertsLabel = remember(currentLanguageCode) { OmniLocalization.navNotifications(currentLanguageCode) }
+  val profileLabel = remember(currentLanguageCode) { OmniLocalization.navProfile(currentLanguageCode) }
+  val qrCenterDescription =
+    remember(currentLanguageCode, isScannerMode) {
+      OmniLocalization.navQrCenterDescription(currentLanguageCode, isScannerMode)
+    }
+
   Box(
     modifier =
       modifier
@@ -3985,46 +4003,61 @@ fun GlassBottomNavigation(
             ),
             RoundedCornerShape(28.dp),
           )
-          .padding(horizontal = 8.dp),
+          .padding(horizontal = 6.dp),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-      BottomNavTabItem(
-        label = stringResource(R.string.nav_home),
-        icon = Icons.Default.Home,
-        isSelected = selectedTab == OmniNavTab.HOME,
-        onClick = { onTabSelected(OmniNavTab.HOME) },
-        testTag = "nav_tab_home",
-      )
-      BottomNavTabItem(
-        label = stringResource(R.string.nav_services),
-        icon = Icons.Default.CalendarMonth,
-        isSelected = selectedTab == OmniNavTab.SERVICES,
-        onClick = { onTabSelected(OmniNavTab.SERVICES) },
-        testTag = "nav_tab_services",
-      )
+      Row(
+        modifier = Modifier.weight(1f),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+      ) {
+        BottomNavTabItem(
+          label = homeLabel,
+          icon = Icons.Default.Home,
+          isSelected = selectedTab == OmniNavTab.HOME,
+          onClick = { onTabSelected(OmniNavTab.HOME) },
+          testTag = "nav_tab_home",
+          modifier = Modifier.weight(1f),
+        )
+        BottomNavTabItem(
+          label = servicesLabel,
+          icon = Icons.Default.CalendarMonth,
+          isSelected = selectedTab == OmniNavTab.SERVICES,
+          onClick = { onTabSelected(OmniNavTab.SERVICES) },
+          testTag = "nav_tab_services",
+          modifier = Modifier.weight(1f),
+        )
+      }
 
       // Spacer for center floating QR Orb
-      Spacer(modifier = Modifier.width(64.dp))
+      Spacer(modifier = Modifier.width(68.dp))
 
-      BottomNavTabItem(
-        label = stringResource(R.string.nav_notifications),
-        icon = Icons.Default.Notifications,
-        isSelected = selectedTab == OmniNavTab.NOTIFICATIONS,
-        badgeCount = unreadNotificationsCount,
-        onClick = { onTabSelected(OmniNavTab.NOTIFICATIONS) },
-        testTag = "nav_tab_notifications",
-      )
-      BottomNavTabItem(
-        label = stringResource(R.string.nav_profile),
-        icon = Icons.Default.Person,
-        isSelected = selectedTab == OmniNavTab.PROFILE,
-        onClick = { onTabSelected(OmniNavTab.PROFILE) },
-        testTag = "nav_tab_profile",
-        useUserAvatar = true,
-        userAvatarUrl = userAvatarUrl,
-        userDisplayName = userDisplayName,
-      )
+      Row(
+        modifier = Modifier.weight(1f),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+      ) {
+        BottomNavTabItem(
+          label = alertsLabel,
+          icon = Icons.Default.Notifications,
+          isSelected = selectedTab == OmniNavTab.NOTIFICATIONS,
+          badgeCount = unreadNotificationsCount,
+          onClick = { onTabSelected(OmniNavTab.NOTIFICATIONS) },
+          testTag = "nav_tab_notifications",
+          modifier = Modifier.weight(1f),
+        )
+        BottomNavTabItem(
+          label = profileLabel,
+          icon = Icons.Default.Person,
+          isSelected = selectedTab == OmniNavTab.PROFILE,
+          onClick = { onTabSelected(OmniNavTab.PROFILE) },
+          testTag = "nav_tab_profile",
+          useUserAvatar = true,
+          userAvatarUrl = userAvatarUrl,
+          userDisplayName = userDisplayName,
+          modifier = Modifier.weight(1f),
+        )
+      }
     }
 
     // Center Floating 3D Neon QR Orb
@@ -4055,7 +4088,7 @@ fun GlassBottomNavigation(
     ) {
       Icon(
         imageVector = Icons.Default.QrCode2,
-        contentDescription = stringResource(R.string.nav_qr_center),
+        contentDescription = qrCenterDescription,
         tint = PureWhite,
         modifier = Modifier.size(32.dp),
       )
@@ -4071,6 +4104,7 @@ private fun BottomNavTabItem(
   badgeCount: Int = 0,
   onClick: () -> Unit,
   testTag: String,
+  modifier: Modifier = Modifier,
   useUserAvatar: Boolean = false,
   userAvatarUrl: String? = null,
   userDisplayName: String = "",
@@ -4091,9 +4125,11 @@ private fun BottomNavTabItem(
 
   Box(
     modifier =
-      bgMod
+      modifier
+        .defaultMinSize(minHeight = 48.dp)
+        .then(bgMod)
         .clickable(onClick = onClick)
-        .padding(horizontal = 12.dp, vertical = 7.dp)
+        .padding(horizontal = 6.dp, vertical = 6.dp)
         .testTag(testTag),
     contentAlignment = Alignment.Center,
   ) {
@@ -4128,6 +4164,8 @@ private fun BottomNavTabItem(
         color = if (isSelected) PureWhite else GlassWhite.copy(alpha = 0.80f),
         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
         maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        softWrap = false,
       )
     }
   }

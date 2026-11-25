@@ -1,6 +1,8 @@
 package com.zoutiw.omnichurch.presentation.screens.home
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -74,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zoutiw.omnichurch.R
+import com.zoutiw.omnichurch.core.utilities.OmniLocalization
 import com.zoutiw.omnichurch.data.models.Announcement
 import com.zoutiw.omnichurch.data.models.AnnouncementComment
 import com.zoutiw.omnichurch.data.models.ChurchService
@@ -212,12 +215,13 @@ fun MemberHomeScreen(
   val displayName =
     member?.effectiveFullName?.takeIf { it.isNotBlank() }
       ?: userProfile?.displayName?.takeIf { it.isNotBlank() }
-      ?: "Manm"
+      ?: OmniLocalization.defaultMemberName(currentLanguageCode)
   val memberPhotoUrl = member?.effectivePhotoUrl ?: userProfile?.photoUrl
   val isAdmin = isAdminSession || userProfile?.isAdminOrSuperAdmin == true
   val spaceSubtitle =
-    if (isAdmin) stringResource(R.string.home_admin_space)
-    else stringResource(R.string.home_member_space)
+    remember(currentLanguageCode, isAdmin) {
+      OmniLocalization.homeSpaceSubtitle(currentLanguageCode, isAdmin)
+    }
   val churchDisplayName =
     activeChurchName?.takeIf { it.isNotBlank() }
       ?: member?.churchName?.takeIf { it.isNotBlank() }
@@ -297,7 +301,9 @@ fun MemberHomeScreen(
       // 4. Dedicated "Kat Manm" (or "Lis Manm" for Admin) Borderless 3D Neumorphic Action Button
       item {
         Neumorphic3DActionButton(
-          text = if (isAdmin) "Lis Manm" else stringResource(R.string.action_member_card),
+          text =
+            if (isAdmin) OmniLocalization.memberListAction(currentLanguageCode)
+            else OmniLocalization.memberCardAction(currentLanguageCode),
           icon = if (isAdmin) Icons.Default.People else Icons.Default.Badge,
           onClick = if (isAdmin) onOpenMemberList else onOpenMemberCard,
           modifier = Modifier
@@ -418,12 +424,12 @@ fun MemberHomeScreen(
       visible = isChromeVisible,
       enter = slideInVertically(
         initialOffsetY = { -it },
-        animationSpec = tween(durationMillis = 180),
-      ) + fadeIn(animationSpec = tween(durationMillis = 160)),
+        animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
+      ) + fadeIn(animationSpec = tween(durationMillis = 120)),
       exit = slideOutVertically(
         targetOffsetY = { -it },
-        animationSpec = tween(durationMillis = 180),
-      ) + fadeOut(animationSpec = tween(durationMillis = 140)),
+        animationSpec = tween(durationMillis = 130, easing = FastOutLinearInEasing),
+      ) + fadeOut(animationSpec = tween(durationMillis = 110)),
       modifier = Modifier.align(Alignment.TopCenter),
     ) {
       Column(

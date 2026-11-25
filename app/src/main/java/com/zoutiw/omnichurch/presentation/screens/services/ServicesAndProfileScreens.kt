@@ -8,6 +8,8 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -105,6 +107,8 @@ import androidx.credentials.CredentialManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zoutiw.omnichurch.R
 import com.zoutiw.omnichurch.core.utilities.BiometricQuickUnlockHelper
+import com.zoutiw.omnichurch.core.utilities.OmniLocalization
+import com.zoutiw.omnichurch.core.utilities.ProfileStrings
 import com.zoutiw.omnichurch.core.utilities.findActivity
 import com.zoutiw.omnichurch.data.models.Announcement
 import com.zoutiw.omnichurch.data.models.AnnouncementComment
@@ -360,12 +364,12 @@ fun ServicesScreen(
       visible = isChromeVisible,
       enter = slideInVertically(
         initialOffsetY = { -it },
-        animationSpec = tween(durationMillis = 180),
-      ) + fadeIn(animationSpec = tween(durationMillis = 160)),
+        animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
+      ) + fadeIn(animationSpec = tween(durationMillis = 120)),
       exit = slideOutVertically(
         targetOffsetY = { -it },
-        animationSpec = tween(durationMillis = 180),
-      ) + fadeOut(animationSpec = tween(durationMillis = 140)),
+        animationSpec = tween(durationMillis = 130, easing = FastOutLinearInEasing),
+      ) + fadeOut(animationSpec = tween(durationMillis = 110)),
       modifier = Modifier.align(Alignment.TopCenter),
     ) {
       Box(
@@ -1227,12 +1231,12 @@ fun NotificationsScreen(
       visible = isChromeVisible,
       enter = slideInVertically(
         initialOffsetY = { -it },
-        animationSpec = tween(durationMillis = 180),
-      ) + fadeIn(animationSpec = tween(durationMillis = 160)),
+        animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
+      ) + fadeIn(animationSpec = tween(durationMillis = 120)),
       exit = slideOutVertically(
         targetOffsetY = { -it },
-        animationSpec = tween(durationMillis = 180),
-      ) + fadeOut(animationSpec = tween(durationMillis = 140)),
+        animationSpec = tween(durationMillis = 130, easing = FastOutLinearInEasing),
+      ) + fadeOut(animationSpec = tween(durationMillis = 110)),
       modifier = Modifier.align(Alignment.TopCenter),
     ) {
       Box(
@@ -1569,6 +1573,9 @@ fun ProfileAndSettingsScreen(
   val activityContext = remember(context) { context.findActivity() ?: context }
   val credentialManager = remember(activityContext) { CredentialManager.create(activityContext) }
   val scope = rememberCoroutineScope()
+  val copy = remember(currentLanguageCode) {
+    ProfileStrings.forLanguage(currentLanguageCode)
+  }
 
   val fullName =
     remember(member?.fullName, userProfile?.displayName) {
@@ -1590,7 +1597,7 @@ fun ProfileAndSettingsScreen(
           } else {
             Toast.makeText(
                 context,
-                "Erè foto: ${result.exceptionOrNull()?.localizedMessage}",
+                copy.photoError.format(result.exceptionOrNull()?.localizedMessage.orEmpty()),
                 Toast.LENGTH_SHORT,
               )
               .show()
@@ -1617,12 +1624,12 @@ fun ProfileAndSettingsScreen(
         try {
           takePictureLauncher.launch(null)
         } catch (e: Exception) {
-          Toast.makeText(context, "Erè kamera: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+          Toast.makeText(context, copy.cameraError.format(e.localizedMessage.orEmpty()), Toast.LENGTH_SHORT).show()
         }
       } else {
         Toast.makeText(
             context,
-            "Otorizasyon kamera refize. Ou ka toujou chwazi yon foto nan Galri a.",
+            copy.cameraDenied,
             Toast.LENGTH_LONG,
           )
           .show()
@@ -1644,7 +1651,7 @@ fun ProfileAndSettingsScreen(
         .padding(bottom = 110.dp),
   ) {
     GlassTopBar(
-      title = stringResource(R.string.profile_screen_title),
+      title = copy.screenTitle,
       onBackClick = onBackClick,
     )
 
@@ -1688,7 +1695,7 @@ fun ProfileAndSettingsScreen(
               ) {
                 Icon(
                   imageVector = Icons.Default.CameraAlt,
-                  contentDescription = "Chanje Foto Pwofil",
+                  contentDescription = copy.changePhoto,
                   tint = PureWhite,
                   modifier = Modifier.size(13.dp),
                 )
@@ -1698,7 +1705,7 @@ fun ProfileAndSettingsScreen(
           Spacer(modifier = Modifier.width(14.dp))
           Column(modifier = Modifier.weight(1f)) {
             Text(
-              text = fullName.ifBlank { "Manm OmniChurch" },
+              text = fullName.ifBlank { "${OmniLocalization.defaultMemberName(currentLanguageCode)} OmniChurch" },
               style = MaterialTheme.typography.headlineMedium,
               color = PureWhite,
               fontWeight = FontWeight.Bold,
@@ -1707,7 +1714,7 @@ fun ProfileAndSettingsScreen(
               member?.googleEmail?.takeIf { it.isNotBlank() }
                 ?: userProfile?.email?.takeIf { it.isNotBlank() }
                 ?: member?.phone?.takeIf { it.isNotBlank() }
-                ?: "Sesyon ID Matrikil + PIN"
+                ?: copy.sessionPinSub
             Text(
               text = secondaryInfo,
               style = MaterialTheme.typography.bodySmall,
@@ -1725,7 +1732,7 @@ fun ProfileAndSettingsScreen(
                     clipboard.setPrimaryClip(
                       ClipData.newPlainText("OmniChurch Matrikil", matrikil)
                     )
-                    Toast.makeText(context, "ID Manm: $matrikil", Toast.LENGTH_SHORT)
+                    Toast.makeText(context, copy.copiedToast.format(matrikil), Toast.LENGTH_SHORT)
                       .show()
                   },
               ) {
@@ -1763,7 +1770,7 @@ fun ProfileAndSettingsScreen(
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-              text = "Mete ajou foto pwofil la...",
+              text = copy.updatingPhoto,
               style = MaterialTheme.typography.bodySmall,
               color = PureWhite,
             )
@@ -1772,7 +1779,7 @@ fun ProfileAndSettingsScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
         GlassButton(
-          text = "Pataje Aplikasyon OmniChurch la",
+          text = copy.shareApp,
           icon = Icons.Default.Share,
           isPrimaryNeon = false,
           onClick = { shareOmniChurchGeneralApp(context, churchNameDisplay) },
@@ -1789,7 +1796,7 @@ fun ProfileAndSettingsScreen(
           contentPadding = PaddingValues(16.dp),
         ) {
           Text(
-            text = "Sekirite & Kont Lye (Opsyonèl)",
+            text = copy.securityTitle,
             style = MaterialTheme.typography.titleMedium,
             color = PureWhite,
             fontWeight = FontWeight.Bold,
@@ -1798,8 +1805,8 @@ fun ProfileAndSettingsScreen(
 
           if (member.googleEmail.isNullOrBlank()) {
             GlassButton(
-              text = "Lye yon kont Google (Opsyonèl)",
-              subtitle = "Konekte ak Google sou nenpòt telefòn",
+              text = copy.linkGoogle,
+              subtitle = copy.linkGoogleSub,
               icon = Icons.Default.Link,
               isPrimaryNeon = false,
               isLoading = isLinkingGoogle,
@@ -1845,7 +1852,7 @@ fun ProfileAndSettingsScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                  text = "Kont Google lye: ${member.googleEmail}",
+                  text = copy.linkedGoogle.format(member.googleEmail.orEmpty()),
                   style = MaterialTheme.typography.bodySmall,
                   color = PureWhite,
                   fontWeight = FontWeight.SemiBold,
@@ -1856,7 +1863,7 @@ fun ProfileAndSettingsScreen(
                 modifier = Modifier.testTag("profile_unlink_google_btn"),
               ) {
                 Text(
-                  text = "Delye",
+                  text = copy.unlink,
                   style = MaterialTheme.typography.labelMedium,
                   color = BrandGold,
                   fontWeight = FontWeight.Bold,
@@ -1885,13 +1892,13 @@ fun ProfileAndSettingsScreen(
               Spacer(modifier = Modifier.width(10.dp))
               Column {
                 Text(
-                  text = "Deblokaj Biyometrik (Anprent / Face ID)",
+                  text = copy.biometricTitle,
                   style = MaterialTheme.typography.titleSmall,
                   color = PureWhite,
                   fontWeight = FontWeight.Bold,
                 )
                 Text(
-                  text = "Debloke sesyon ID $matrikil san retape PIN",
+                  text = copy.biometricSub.format(matrikil),
                   style = MaterialTheme.typography.bodySmall,
                   color = MutedGlassText,
                 )
@@ -1903,8 +1910,8 @@ fun ProfileAndSettingsScreen(
                 if (wantEnabled && BiometricQuickUnlockHelper.isBiometricAvailable(context)) {
                   BiometricQuickUnlockHelper.promptBiometricUnlock(
                     context = activityContext,
-                    title = "Aktive Anprent / Face ID",
-                    subtitle = "Konfime idantite w pou lye ak ID $matrikil",
+                    title = copy.biometricPromptTitle,
+                    subtitle = copy.biometricPromptSub.format(matrikil),
                     onSuccess = { onToggleBiometric(true) },
                     onError = { err ->
                       Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
@@ -1949,7 +1956,7 @@ fun ProfileAndSettingsScreen(
           )
           Spacer(modifier = Modifier.width(8.dp))
           Text(
-            text = stringResource(R.string.profile_language_label),
+            text = copy.languageLabel,
             style = MaterialTheme.typography.titleMedium,
             color = PureWhite,
             fontWeight = FontWeight.Bold,
@@ -1957,20 +1964,23 @@ fun ProfileAndSettingsScreen(
         }
         Spacer(modifier = Modifier.height(12.dp))
 
+        val normalizedLang = remember(currentLanguageCode) { OmniLocalization.normalize(currentLanguageCode) }
         val languages =
-          listOf(
-            "ht" to stringResource(R.string.profile_lang_ht),
-            "fr" to stringResource(R.string.profile_lang_fr),
-            "en" to stringResource(R.string.profile_lang_en),
-            "es" to stringResource(R.string.profile_lang_es),
-          )
+          remember {
+            listOf(
+              "ht" to "Kreyòl",
+              "fr" to "Français",
+              "en" to "English",
+              "es" to "Español",
+            )
+          }
 
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
           languages.forEach { (code, name) ->
-            val isSelected = currentLanguageCode == code
+            val isSelected = normalizedLang == code
             Box(
               modifier =
                 Modifier.weight(1f)
@@ -1984,16 +1994,18 @@ fun ProfileAndSettingsScreen(
                     RoundedCornerShape(14.dp),
                   )
                   .clickable { onLanguageChange(code) }
-                  .padding(vertical = 10.dp, horizontal = 4.dp)
+                  .padding(vertical = 12.dp, horizontal = 4.dp)
                   .testTag("lang_option_$code"),
               contentAlignment = Alignment.Center,
             ) {
               Text(
-                text = name.substringBefore(" "),
+                text = name,
                 style = MaterialTheme.typography.labelMedium,
                 color = PureWhite,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
               )
             }
           }
@@ -2008,7 +2020,7 @@ fun ProfileAndSettingsScreen(
           modifier = Modifier.testTag("profile_member_personal_info_card"),
         ) {
           Text(
-            text = "Enfòmasyon Pèsonèl Manm nan",
+            text = copy.personalInfoTitle,
             style = MaterialTheme.typography.titleMedium,
             color = PureWhite,
             fontWeight = FontWeight.Bold,
@@ -2034,8 +2046,7 @@ fun ProfileAndSettingsScreen(
               modifier = Modifier.size(18.dp).padding(top = 1.dp),
             )
             Text(
-              text =
-                "Ou gen dwa klike sou foto pwofil ou anlè a pou chanje l nenpòt kilè. Pou nenpòt lòt done pèsonèl ou (Non, Matrikil, Depatman, Wòl), se administrasyon legliz la sèlman ki gen otorizasyon pou modifye yo.",
+              text = copy.adminOnlyNotice,
               style = MaterialTheme.typography.bodySmall,
               color = GlassWhite.copy(alpha = 0.92f),
             )
@@ -2044,33 +2055,33 @@ fun ProfileAndSettingsScreen(
           Spacer(modifier = Modifier.height(12.dp))
 
           ReadOnlyMemberFieldRow(
-            label = stringResource(R.string.setup_member_fullname_label),
+            label = copy.fullNameLabel,
             value = member.effectiveFullName,
           )
           Spacer(modifier = Modifier.height(8.dp))
           ReadOnlyMemberFieldRow(
-            label = "ID Matrikil Ofisyèl",
+            label = copy.matriculeLabel,
             value = member.effectiveMatrikil,
           )
           Spacer(modifier = Modifier.height(8.dp))
           ReadOnlyMemberFieldRow(
-            label = "Legliz",
+            label = copy.churchLabel,
             value = churchNameDisplay,
           )
           Spacer(modifier = Modifier.height(8.dp))
           ReadOnlyMemberFieldRow(
-            label = stringResource(R.string.setup_member_department_label),
-            value = member.department.ifBlank { "Adorasyon" },
+            label = copy.departmentLabel,
+            value = member.department.ifBlank { OmniLocalization.defaultDepartmentName(currentLanguageCode) },
           )
           Spacer(modifier = Modifier.height(8.dp))
           ReadOnlyMemberFieldRow(
-            label = stringResource(R.string.setup_member_role_label),
-            value = member.role.ifBlank { "Manm" },
+            label = copy.roleLabel,
+            value = member.role.ifBlank { OmniLocalization.defaultMemberName(currentLanguageCode) },
           )
           if (!member.phone.isNullOrBlank()) {
             Spacer(modifier = Modifier.height(8.dp))
             ReadOnlyMemberFieldRow(
-              label = "Telefòn Kontak",
+              label = copy.phoneLabel,
               value = member.phone,
             )
           }
@@ -2079,7 +2090,7 @@ fun ProfileAndSettingsScreen(
 
       // 4. Sign Out ("Dekonekte")
       GlassButton(
-        text = stringResource(R.string.auth_sign_out),
+        text = copy.signOut,
         icon = Icons.AutoMirrored.Filled.Logout,
         isPrimaryNeon = false,
         onClick = onSignOut,
@@ -2100,21 +2111,21 @@ fun ProfileAndSettingsScreen(
           verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
           Text(
-            text = "Chanje Foto Pwofil Manm",
+            text = copy.changePhoto,
             style = MaterialTheme.typography.titleMedium,
             color = PureWhite,
             fontWeight = FontWeight.Bold,
           )
           Text(
-            text = "Chwazi kijan ou vle pran oswa chwazi nouvo foto paspò w la pou mete sou pwofil ak kat idantite w.",
+            text = copy.changePhotoSub,
             style = MaterialTheme.typography.bodySmall,
             color = MutedGlassText,
           )
           Spacer(modifier = Modifier.height(4.dp))
 
           GlassButton(
-            text = "Pran yon Foto ak Kamera",
-            subtitle = "Louvri kamera telefòn lan dirèkteman",
+            text = copy.takePhoto,
+            subtitle = copy.takePhotoSub,
             icon = Icons.Default.CameraAlt,
             isPrimaryNeon = true,
             onClick = {
@@ -2128,7 +2139,7 @@ fun ProfileAndSettingsScreen(
                 try {
                   takePictureLauncher.launch(null)
                 } catch (e: Exception) {
-                  Toast.makeText(context, "Erè kamera: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                  Toast.makeText(context, copy.cameraError.format(e.localizedMessage.orEmpty()), Toast.LENGTH_SHORT).show()
                 }
               } else {
                 cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
@@ -2139,8 +2150,8 @@ fun ProfileAndSettingsScreen(
           )
 
           GlassButton(
-            text = "Chwazi nan Galri",
-            subtitle = "Chwazi yon foto ki deja sou aparèy la",
+            text = copy.pickGallery,
+            subtitle = copy.pickGallerySub,
             icon = Icons.Default.Download,
             isPrimaryNeon = false,
             onClick = {
