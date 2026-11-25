@@ -20,6 +20,7 @@ import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.snapshots
 import com.zoutiw.omnichurch.core.network.FirestoreProvider
 import com.zoutiw.omnichurch.core.network.OperationType
@@ -303,8 +304,39 @@ class AuthRepository(
           null
         }
 
-      val membersSnap = db.collection("members").get().await()
-      val allMembers = membersSnap.documents.mapNotNull { it.toMember() }
+      val targetedCandidates = linkedMapOf<String, Member>()
+      runCatching {
+        db.collection("members")
+          .whereEqualTo("googleEmail", cleanEmail)
+          .limit(10)
+          .get(Source.SERVER)
+          .awaitSafe()
+          .documents
+          .mapNotNull { it.toMember() }
+          .forEach { targetedCandidates[it.id] = it }
+      }
+      if (targetedCandidates.isEmpty()) {
+        runCatching {
+          db.collection("members")
+            .whereEqualTo("email", cleanEmail)
+            .limit(10)
+            .get(Source.SERVER)
+            .awaitSafe()
+            .documents
+            .mapNotNull { it.toMember() }
+            .forEach { targetedCandidates[it.id] = it }
+        }
+      }
+
+      val allMembers =
+        if (targetedCandidates.isNotEmpty()) {
+          targetedCandidates.values.toList()
+        } else {
+          val membersSnap =
+            runCatching { db.collection("members").get(Source.SERVER).awaitSafe() }
+              .getOrElse { db.collection("members").get().awaitSafe() }
+          membersSnap.documents.mapNotNull { it.toMember() }
+        }
 
       val candidateMembers =
         if (selectedChurch != null) {
@@ -324,6 +356,14 @@ class AuthRepository(
       val memberChurch =
         selectedChurch
           ?: churches.firstOrNull { OmniAuthEvaluator.doesMemberBelongToChurch(matchedMember, it) }
+          ?: runCatching {
+            val cid = matchedMember.churchId.trim()
+            if (cid.isNotEmpty()) {
+              db.collection("churches").document(cid).get(Source.SERVER).awaitSafe().toChurch()
+                ?: db.collection("churches").whereEqualTo("code", cid).limit(1).get(Source.SERVER).awaitSafe()
+                  .documents.firstOrNull()?.toChurch()
+            } else null
+          }.getOrNull()
           ?: Church(
             id = matchedMember.churchId,
             code = matchedMember.churchId,

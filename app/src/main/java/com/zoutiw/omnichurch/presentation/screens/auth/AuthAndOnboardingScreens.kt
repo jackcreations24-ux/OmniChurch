@@ -392,6 +392,83 @@ fun OmniChurchAuthPortalScreen(
       "es" -> "Tu perfil de miembro está verificado en estas iglesias. Selecciona la que deseas abrir:"
       else -> "Pwofil manm ou an verifye nan legliz sa yo. Chwazi legliz ou vle ouvri kounye a :"
     }
+  val memberTitleText =
+    when (normalizedLang) {
+      "fr" -> "Connexion Membre (ID Matricule + PIN)"
+      "en" -> "Member Sign-In (Member ID + PIN)"
+      "es" -> "Inicio de Sesión de Miembro (ID + PIN)"
+      else -> "Koneksyon Manm (ID Matrikil + PIN)"
+    }
+  val adminTitleText =
+    when (normalizedLang) {
+      "fr" -> "Connexion Administrateur"
+      "en" -> "Church Admin Sign-In"
+      "es" -> "Inicio de Sesión de Administrador"
+      else -> "Koneksyon Administratè Legliz"
+    }
+  val memberIdInputLabel =
+    when (normalizedLang) {
+      "fr" -> "ID Matricule ou Téléphone"
+      "en" -> "Member ID or Phone"
+      "es" -> "ID de Miembro o Teléfono"
+      else -> "ID Manm (Matrikil) oswa Telefòn"
+    }
+  val memberPinInputLabel =
+    when (normalizedLang) {
+      "fr" -> "Code de Sécurité (PIN)"
+      "en" -> "Security Code (PIN)"
+      "es" -> "Código de Seguridad (PIN)"
+      else -> "Kòd Sekirite (PIN)"
+    }
+  val googleButtonCaption =
+    when (normalizedLang) {
+      "fr" -> "Google (Si compte lié)"
+      "en" -> "Google (If account linked)"
+      "es" -> "Google (Si cuenta vinculada)"
+      else -> "Google (Si kont ou lye)"
+    }
+  val adminSubtitleText =
+    when (normalizedLang) {
+      "fr" -> "Connectez-vous avec l'e-mail et le mot de passe de l'église pour gérer les membres, les services et les présences."
+      "en" -> "Sign in with church email and password to manage members, services, and attendance."
+      "es" -> "Inicia sesión con el correo y contraseña de la iglesia para administrar miembros, servicios y asistencia."
+      else -> "Konekte ak imèl ak modpas kont legliz la pou jere manm yo, sèvis yo ak prezans yo."
+    }
+  val adminEmailLabel =
+    when (normalizedLang) {
+      "fr" -> "Email Église / Administrateur"
+      "en" -> "Church / Admin Email"
+      "es" -> "Correo de Iglesia / Administrador"
+      else -> "Imèl Legliz / Administratè"
+    }
+  val adminPasswordLabel =
+    when (normalizedLang) {
+      "fr" -> "Mot de passe du compte"
+      "en" -> "Church Account Password"
+      "es" -> "Contraseña de la cuenta"
+      else -> "Modpas Kont Legliz la"
+    }
+  val connectButtonText =
+    when (normalizedLang) {
+      "fr" -> "Connexion"
+      "en" -> "Sign In"
+      "es" -> "Conectar"
+      else -> "Konekte"
+    }
+  val adminTabEmailLabel =
+    when (normalizedLang) {
+      "fr" -> "E-mail + Mot de passe"
+      "en" -> "Email + Password"
+      "es" -> "Correo + Contraseña"
+      else -> "Imèl + Modpas"
+    }
+  val adminTabGoogleLabel =
+    when (normalizedLang) {
+      "fr" -> "Google Admin"
+      "en" -> "Admin Google"
+      "es" -> "Google Admin"
+      else -> "Google Admin"
+    }
 
   LaunchedEffect(rememberedAdminCredentials) {
     rememberAdminMe = rememberedAdminCredentials.rememberEnabled
@@ -588,9 +665,7 @@ fun OmniChurchAuthPortalScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
           Text(
-            text =
-              if (isMemberMode) "Koneksyon Manm (ID Matrikil + PIN)"
-              else "Koneksyon Administratè Legliz",
+            text = if (isMemberMode) memberTitleText else adminTitleText,
             style = MaterialTheme.typography.titleLarge,
             color = PureWhite,
             fontWeight = FontWeight.Bold,
@@ -601,7 +676,7 @@ fun OmniChurchAuthPortalScreen(
               if (isMemberMode) {
                 memberSubtitleText
               } else if (isAdminEmailMode) {
-                "Konekte ak imèl ak modpas kont legliz la pou jere manm yo, sèvis yo ak prezans yo."
+                adminSubtitleText
               } else {
                 when (normalizedLang) {
                   "fr" -> "Connectez-vous avec votre compte Google Administrateur pour ouvrir automatiquement votre église."
@@ -750,7 +825,7 @@ fun OmniChurchAuthPortalScreen(
                 localError = null
                 onClearFeedback()
               },
-              label = "ID Manm (Matrikil) oswa Telefòn",
+              label = memberIdInputLabel,
               placeholder = "Egzanp: CH001-JD4827 oswa 509...",
               leadingIcon = Icons.Default.Badge,
               testTag = "member_matrikil_input",
@@ -763,7 +838,7 @@ fun OmniChurchAuthPortalScreen(
                 localError = null
                 onClearFeedback()
               },
-              label = "Kòd Sekirite (PIN)",
+              label = memberPinInputLabel,
               placeholder = "Antre PIN administratè a ba ou a",
               leadingIcon = Icons.Default.Key,
               visualTransformation = PasswordVisualTransformation(),
@@ -778,9 +853,10 @@ fun OmniChurchAuthPortalScreen(
               )
             } else {
               GlassButton(
-                text = "Konekte ak ID Matrikil + PIN",
+                text = "Konekte",
                 icon = Icons.Default.VerifiedUser,
                 isPrimaryNeon = true,
+                isLoading = isAuthenticating,
                 onClick = {
                   localError = null
                   onClearFeedback()
@@ -826,7 +902,7 @@ fun OmniChurchAuthPortalScreen(
             Spacer(modifier = Modifier.height(4.dp))
 
             Premium3DGoogleIconButton(
-              caption = "Google (Si kont ou lye)",
+              caption = googleButtonCaption,
               onClick = {
                 localError = null
                 onClearFeedback()
@@ -852,8 +928,8 @@ fun OmniChurchAuthPortalScreen(
             )
           } else {
             GlassSegmentedControl(
-              leftLabel = "Imèl + Modpas",
-              rightLabel = "Google Admin",
+              leftLabel = adminTabEmailLabel,
+              rightLabel = adminTabGoogleLabel,
               isLeftSelected = isAdminEmailMode,
               onSelectLeft = {
                 isAdminEmailMode = true
@@ -904,7 +980,7 @@ fun OmniChurchAuthPortalScreen(
                   resetFeedbackMessage = null
                   onClearFeedback()
                 },
-                label = "Imèl Legliz / Administratè",
+                label = adminEmailLabel,
                 placeholder = "egz: paste@leglizou.org",
                 leadingIcon = Icons.Default.Email,
                 keyboardType = KeyboardType.Email,
@@ -920,7 +996,7 @@ fun OmniChurchAuthPortalScreen(
                   resetFeedbackMessage = null
                   onClearFeedback()
                 },
-                label = "Modpas Kont Legliz la",
+                label = adminPasswordLabel,
                 placeholder = "Antre modpas legliz la",
                 leadingIcon = Icons.Default.Lock,
                 trailingIcon = {
@@ -1018,7 +1094,7 @@ fun OmniChurchAuthPortalScreen(
               }
 
               GlassButton(
-                text = "Konekte ak Imèl + Modpas",
+                text = connectButtonText,
                 icon = Icons.Default.AdminPanelSettings,
                 isPrimaryNeon = true,
                 isLoading = isAuthenticating,

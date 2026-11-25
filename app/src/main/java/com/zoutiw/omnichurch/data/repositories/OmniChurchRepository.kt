@@ -191,6 +191,13 @@ class OmniChurchRepository(
   fun observeCurrentMember(userId: String): Flow<Member?> =
     memberRepository.observeCurrentMember(userId)
 
+  fun observeSessionMemberResult(
+    churchId: String,
+    memberDocId: String,
+    memberMatrikil: String,
+  ): Flow<Result<Member?>> =
+    memberRepository.observeSessionMemberResult(churchId, memberDocId, memberMatrikil)
+
   fun observeSessionMember(
     churchId: String,
     memberDocId: String,
