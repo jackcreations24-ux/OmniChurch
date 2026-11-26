@@ -30,6 +30,8 @@ import com.zoutiw.omnichurch.data.models.TargetReactionSummary
 import com.zoutiw.omnichurch.data.models.UserProfile
 import com.zoutiw.omnichurch.presentation.navigation.AdminAuthViewModel
 import com.zoutiw.omnichurch.presentation.navigation.OmniChurchViewModel
+import com.zoutiw.omnichurch.presentation.screens.auth.AutoLockWarningDialog
+import com.zoutiw.omnichurch.presentation.screens.auth.BlockingAdminAuthGateOverlay
 import com.zoutiw.omnichurch.presentation.viewmodels.UiState
 import kotlinx.coroutines.CoroutineScope
 
@@ -246,6 +248,95 @@ internal fun ObserveAdminWorkspaceAutoLock(
       isAdminSession = isAdminSession,
       isAdminUnlocked = !isAdminLocked,
       church = currentChurch,
+    )
+  }
+}
+
+@Composable
+internal fun WorkspaceAdminSecurityOverlays(
+  identity: ResolvedWorkspaceIdentity,
+  currentChurch: Church?,
+  adminAuthViewModel: AdminAuthViewModel,
+  adminFirebaseUser: FirebaseUser?,
+  adminAuthBusy: Boolean,
+  adminAuthError: String?,
+  adminAuthInfo: String?,
+  autoLockWarningSeconds: Int?,
+  legacyVerifiedChurchId: String?,
+  legacyVerifiedPin: String?,
+  currentLanguageCode: String,
+  onExitToAuthPortal: () -> Unit,
+) {
+  if (identity.isAdminSession && !identity.isAdminLocked && autoLockWarningSeconds != null && currentChurch != null) {
+    AutoLockWarningDialog(
+      secondsRemaining = autoLockWarningSeconds,
+      currentLanguageCode = currentLanguageCode,
+      onStayActive = { adminAuthViewModel.recordUserInteraction() },
+      onLockNow = { adminAuthViewModel.lockChurchNow(currentChurch.id) },
+    )
+  }
+
+  if (identity.isAdminLocked && currentChurch != null) {
+    BlockingAdminAuthGateOverlay(
+      church = currentChurch,
+      firebaseUser = adminFirebaseUser,
+      isBusy = adminAuthBusy,
+      errorMessage = adminAuthError,
+      infoMessage = adminAuthInfo,
+      legacyVerifiedChurchId = legacyVerifiedChurchId,
+      legacyVerifiedPin = legacyVerifiedPin,
+      currentLanguageCode = currentLanguageCode,
+      onClearMessages = { adminAuthViewModel.clearMessages() },
+      onSignInEmailPassword = { email, password ->
+        adminAuthViewModel.signInAdminWithEmailPassword(
+          church = currentChurch,
+          email = email,
+          password = password,
+          languageCode = currentLanguageCode,
+          onSuccess = {},
+        )
+      },
+      onSendPasswordReset = { email ->
+        adminAuthViewModel.sendPasswordResetEmail(email, currentLanguageCode)
+      },
+      onGoogleVerified = {
+        adminAuthViewModel.verifySignedInAdminGoogleAccount(
+          church = currentChurch,
+          languageCode = currentLanguageCode,
+          onSuccess = {},
+        )
+      },
+      onQuickPinSubmit = { enteredPin ->
+        adminAuthViewModel.unlockWithQuickPin(
+          church = currentChurch,
+          pin = enteredPin,
+          languageCode = currentLanguageCode,
+          onSuccess = {},
+        )
+      },
+      onBiometricSuccess = {
+        adminAuthViewModel.authorizeViaBiometric(
+          church = currentChurch,
+          languageCode = currentLanguageCode,
+          onSuccess = {},
+        )
+      },
+      onVerifyLegacyPin = { pin ->
+        adminAuthViewModel.verifyLegacyPinStep(currentChurch, pin, currentLanguageCode)
+      },
+      onCompleteLegacyMigration = { email, newPass, confirmPass ->
+        adminAuthViewModel.completeLegacyMigration(
+          church = currentChurch,
+          adminEmail = email,
+          newPassword = newPass,
+          confirmPassword = confirmPass,
+          languageCode = currentLanguageCode,
+          onSuccess = {},
+        )
+      },
+      onResetLegacyMigration = { adminAuthViewModel.resetLegacyMigrationStep() },
+      onLocalError = { msg -> adminAuthViewModel.setAuthError(msg) },
+      onExitToAuthPortal = onExitToAuthPortal,
     )
   }
 }

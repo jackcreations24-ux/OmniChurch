@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package com.zoutiw.omnichurch.presentation.navigation
 
 import android.content.Context

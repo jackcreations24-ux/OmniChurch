@@ -17,8 +17,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -179,7 +179,7 @@ internal fun ServiceCardHeadlineAndMedia(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
           ) {
             Icon(
-              imageVector = Icons.Default.MenuBook,
+              imageVector = Icons.AutoMirrored.Filled.MenuBook,
               contentDescription = null,
               tint = BrandGold,
               modifier = Modifier.size(13.dp),

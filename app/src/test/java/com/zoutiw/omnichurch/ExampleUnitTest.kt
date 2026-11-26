@@ -14,7 +14,6 @@ import com.zoutiw.omnichurch.data.models.OmniReactionType
 import com.zoutiw.omnichurch.data.models.UserProfile
 import com.zoutiw.omnichurch.data.models.buildCanonicalQrPayload
 import com.zoutiw.omnichurch.data.models.computeDeterministicVerificationSeal
-import com.zoutiw.omnichurch.data.models.isServiceEnded
 import com.zoutiw.omnichurch.data.models.maskLegalDocumentNumber
 import com.zoutiw.omnichurch.presentation.components.toDrawableRes
 import org.junit.Assert.assertEquals

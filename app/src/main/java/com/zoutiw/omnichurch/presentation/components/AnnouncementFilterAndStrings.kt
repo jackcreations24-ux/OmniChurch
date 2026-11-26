@@ -226,7 +226,7 @@ object AnnouncementStrings {
       when (languageCode.trim().lowercase()) {
         "fr" -> Locale.FRENCH
         "en" -> Locale.ENGLISH
-        "es" -> Locale("es")
+        "es" -> Locale.forLanguageTag("es")
         else -> Locale.getDefault()
       }
     val ts = announcement.createdAt ?: announcement.updatedAt

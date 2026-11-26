@@ -4,14 +4,12 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import com.zoutiw.omnichurch.core.utilities.LocaleManager
 import com.zoutiw.omnichurch.data.models.Church
-import com.zoutiw.omnichurch.data.models.OmniReactionType
 import com.zoutiw.omnichurch.data.models.UserProfile
 import com.zoutiw.omnichurch.presentation.screens.donate.DonateScreen
 import com.zoutiw.omnichurch.presentation.screens.member.AdminMemberListScreen
 import com.zoutiw.omnichurch.presentation.screens.member.DigitalMemberIdScreen
 import com.zoutiw.omnichurch.presentation.screens.member.MemberQRGalleryScreen
 import com.zoutiw.omnichurch.presentation.screens.scanner.AdminQRScannerScreen
-import com.zoutiw.omnichurch.presentation.screens.services.NotificationsScreen
 import com.zoutiw.omnichurch.presentation.screens.services.ProfileAndSettingsScreen
 import com.zoutiw.omnichurch.presentation.screens.verification.MemberPublicVerificationScreen
 import kotlinx.coroutines.launch
@@ -157,137 +155,6 @@ internal fun NavGraphBuilder.registerSecondaryWorkspaceRoutes(ctx: WorkspaceNavC
           onError = { err -> ctx.viewModel.setFeedbackMessage(err) },
         )
       },
-    )
-  }
-
-  composable(OmniRoutes.NOTIFICATIONS) {
-    NotificationsScreen(
-      notificationsState = ctx.notificationsState,
-      onMarkRead = { notifId -> ctx.viewModel.markNotificationAsRead(notifId) },
-      onMarkAllRead = { list -> ctx.viewModel.markAllNotificationsRead(list) },
-      onBackClick = ctx.navigateBackOrHome,
-      isAdmin = ctx.isAdminSession,
-      isDeaconSession = ctx.isActiveDeacon,
-      currentAuthUid = ctx.currentAuthUid,
-      deaconAuthorLabel =
-        ctx.member?.let {
-          com.zoutiw.omnichurch.data.models.OmniRoleEvaluator.defaultDeaconAuthorName(it)
-        },
-      canPublishAnnouncement = ctx.canPublishAnnouncements,
-      canEditAnnouncement = ctx.canPublishAnnouncements,
-      availableServices = ctx.availableServicesList,
-      onCreateAnnouncement =
-        if (ctx.canPublishAnnouncements) {
-          {
-            title,
-            content,
-            department,
-            category,
-            date,
-            targetAudience,
-            isPinned,
-            showToastOnLogin,
-            toastAlertLevel,
-            isScheduledNotification,
-            scheduledNotificationDate,
-            posterUrl,
-            serviceId ->
-            ctx.viewModel.createAnnouncement(
-              churchId = ctx.resolvedChurchId,
-              title = title,
-              content = content,
-              isPinned = isPinned,
-              authorName = ctx.resolvedAuthorName,
-              department = department,
-              category = category,
-              date = date,
-              targetAudience = targetAudience,
-              showToastOnLogin = showToastOnLogin,
-              toastAlertLevel = toastAlertLevel,
-              isScheduledNotification = isScheduledNotification,
-              scheduledNotificationDate = scheduledNotificationDate,
-              posterUrl = posterUrl,
-              serviceId = serviceId,
-            )
-          }
-        } else null,
-      onUpdateAnnouncement =
-        if (ctx.canPublishAnnouncements) {
-          {
-            existingAnnouncement,
-            title,
-            content,
-            department,
-            category,
-            date,
-            targetAudience,
-            isPinned,
-            showToastOnLogin,
-            toastAlertLevel,
-            isScheduledNotification,
-            scheduledNotificationDate,
-            posterUrl,
-            serviceId ->
-            ctx.viewModel.updateAnnouncement(
-              announcementId = existingAnnouncement.id,
-              title = title,
-              content = content,
-              department = department,
-              category = category,
-              date = date,
-              targetAudience = targetAudience,
-              isPinned = isPinned,
-              showToastOnLogin = showToastOnLogin,
-              toastAlertLevel = toastAlertLevel,
-              isScheduledNotification = isScheduledNotification,
-              scheduledNotificationDate = scheduledNotificationDate,
-              posterUrl = posterUrl,
-              serviceId = serviceId,
-            )
-          }
-        } else null,
-      announcementsState = ctx.announcementsState,
-      unreadAnnouncementIds = ctx.unreadAnnouncementIds,
-      onMarkAnnouncementRead = { announcementId ->
-        ctx.viewModel.markAnnouncementAsRead(announcementId)
-      },
-      onMarkAllAnnouncementsRead = {
-        ctx.viewModel.markAllAnnouncementsAsRead()
-      },
-      onRetryLoadAnnouncements = {
-        ctx.viewModel.retryLoadAnnouncements()
-      },
-      currentLanguageCode = ctx.currentLanguageCode,
-      reactionSummaries = ctx.reactionSummaries,
-      commentCounts = ctx.commentCounts,
-      onReactToAnnouncement = { announcementId, reactionType ->
-        ctx.viewModel.reactToFeedItem(
-          targetId = announcementId,
-          isServiceTarget = false,
-          churchId = ctx.resolvedChurchId,
-          reactionType = OmniReactionType.fromKey(reactionType),
-        )
-      },
-      observeComments = { targetId ->
-        ctx.viewModel.observeCommentsForTarget(ctx.resolvedChurchId, targetId)
-      },
-      onPostComment = { targetId, content ->
-        ctx.viewModel.postComment(targetId, false, content)
-      },
-      onReactToComment = { commentId, reactionType ->
-        ctx.viewModel.reactToFeedItem(
-          targetId = commentId,
-          isServiceTarget = false,
-          churchId = ctx.resolvedChurchId,
-          reactionType = OmniReactionType.fromKey(reactionType),
-          isCommentTarget = true,
-        )
-      },
-      onDeleteAnnouncement = { announcementId ->
-        ctx.viewModel.deleteAnnouncement(announcementId)
-      },
-      isChromeVisible = ctx.isChromeVisible,
-      onChromeVisibilityChange = ctx.onChromeVisibilityChange,
     )
   }
 

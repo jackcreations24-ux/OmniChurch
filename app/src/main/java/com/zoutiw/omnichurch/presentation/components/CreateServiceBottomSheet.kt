@@ -19,10 +19,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Church
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GroupAdd
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -289,7 +289,7 @@ fun CreateServiceBottomSheet(
             onValueChange = { passage = it },
             label = copy.passageLabel,
             placeholder = copy.passagePlaceholder,
-            leadingIcon = Icons.Default.MenuBook,
+            leadingIcon = Icons.AutoMirrored.Filled.MenuBook,
             modifier = Modifier.weight(1f),
             testTag = "service_input_passage",
           )

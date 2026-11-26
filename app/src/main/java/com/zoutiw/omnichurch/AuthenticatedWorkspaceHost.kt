@@ -38,8 +38,6 @@ import com.zoutiw.omnichurch.presentation.components.GlassLoadingIndicator
 import com.zoutiw.omnichurch.presentation.components.OmniNavTab
 import com.zoutiw.omnichurch.presentation.navigation.AdminAuthViewModel
 import com.zoutiw.omnichurch.presentation.navigation.OmniChurchViewModel
-import com.zoutiw.omnichurch.presentation.screens.auth.AutoLockWarningDialog
-import com.zoutiw.omnichurch.presentation.screens.auth.BlockingAdminAuthGateOverlay
 import com.zoutiw.omnichurch.presentation.screens.auth.signOutOmniChurch
 import com.zoutiw.omnichurch.presentation.viewmodels.UiState
 import com.zoutiw.omnichurch.ui.theme.OmniBrushes
@@ -340,79 +338,20 @@ internal fun AuthenticatedOmniChurchWorkspace(
         )
       }
 
-      val warningSecs = autoLockWarningSeconds
-      if (identity.isAdminSession && !identity.isAdminLocked && warningSecs != null && currentChurch != null) {
-        AutoLockWarningDialog(
-          secondsRemaining = warningSecs,
-          currentLanguageCode = currentLanguageCode,
-          onStayActive = { adminAuthViewModel.recordUserInteraction() },
-          onLockNow = { adminAuthViewModel.lockChurchNow(currentChurch.id) },
-        )
-      }
-
-      if (identity.isAdminLocked && currentChurch != null) {
-        BlockingAdminAuthGateOverlay(
-          church = currentChurch,
-          firebaseUser = adminFirebaseUser,
-          isBusy = adminAuthBusy,
-          errorMessage = adminAuthError,
-          infoMessage = adminAuthInfo,
-          legacyVerifiedChurchId = legacyVerifiedChurchId,
-          legacyVerifiedPin = legacyVerifiedPin,
-          currentLanguageCode = currentLanguageCode,
-          onClearMessages = { adminAuthViewModel.clearMessages() },
-          onSignInEmailPassword = { email, password ->
-            adminAuthViewModel.signInAdminWithEmailPassword(
-              church = currentChurch,
-              email = email,
-              password = password,
-              languageCode = currentLanguageCode,
-              onSuccess = {},
-            )
-          },
-          onSendPasswordReset = { email ->
-            adminAuthViewModel.sendPasswordResetEmail(email, currentLanguageCode)
-          },
-          onGoogleVerified = {
-            adminAuthViewModel.verifySignedInAdminGoogleAccount(
-              church = currentChurch,
-              languageCode = currentLanguageCode,
-              onSuccess = {},
-            )
-          },
-          onQuickPinSubmit = { enteredPin ->
-            adminAuthViewModel.unlockWithQuickPin(
-              church = currentChurch,
-              pin = enteredPin,
-              languageCode = currentLanguageCode,
-              onSuccess = {},
-            )
-          },
-          onBiometricSuccess = {
-            adminAuthViewModel.authorizeViaBiometric(
-              church = currentChurch,
-              languageCode = currentLanguageCode,
-              onSuccess = {},
-            )
-          },
-          onVerifyLegacyPin = { pin ->
-            adminAuthViewModel.verifyLegacyPinStep(currentChurch, pin, currentLanguageCode)
-          },
-          onCompleteLegacyMigration = { email, newPass, confirmPass ->
-            adminAuthViewModel.completeLegacyMigration(
-              church = currentChurch,
-              adminEmail = email,
-              newPassword = newPass,
-              confirmPassword = confirmPass,
-              languageCode = currentLanguageCode,
-              onSuccess = {},
-            )
-          },
-          onResetLegacyMigration = { adminAuthViewModel.resetLegacyMigrationStep() },
-          onLocalError = { msg -> adminAuthViewModel.setAuthError(msg) },
-          onExitToAuthPortal = performFullSignOut,
-        )
-      }
+      WorkspaceAdminSecurityOverlays(
+        identity = identity,
+        currentChurch = currentChurch,
+        adminAuthViewModel = adminAuthViewModel,
+        adminFirebaseUser = adminFirebaseUser,
+        adminAuthBusy = adminAuthBusy,
+        adminAuthError = adminAuthError,
+        adminAuthInfo = adminAuthInfo,
+        autoLockWarningSeconds = autoLockWarningSeconds,
+        legacyVerifiedChurchId = legacyVerifiedChurchId,
+        legacyVerifiedPin = legacyVerifiedPin,
+        currentLanguageCode = currentLanguageCode,
+        onExitToAuthPortal = performFullSignOut,
+      )
     }
   }
 }

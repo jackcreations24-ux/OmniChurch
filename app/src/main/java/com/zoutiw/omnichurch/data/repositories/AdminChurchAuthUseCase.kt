@@ -110,6 +110,86 @@ internal class AdminChurchAuthUseCase(
     }
   }
 
+  private suspend fun resolveAuthorizedChurchesForSignedInAdmin(
+    firebaseUser: FirebaseUser,
+    resolvedEmail: String,
+    includeLegacyEmailLookup: Boolean,
+  ): List<Church> {
+    val isSuperDev = CryptoSecurity.isSuperDeveloperAccount(resolvedEmail)
+    val ownedChurches = linkedMapOf<String, Church>()
+    resolveAdminOwnedChurches(firebaseUser).forEach { church ->
+      ownedChurches[church.id] = church
+    }
+
+    if (isSuperDev) {
+      churchRepository.fetchAllChurches().forEach { church ->
+        ownedChurches[church.id] = church
+      }
+    } else {
+      val existingUserProfile =
+        runCatching {
+          db.collection("users").document(firebaseUser.uid).get().await().toUserProfile()
+        }.getOrNull()
+      val profileChurchId = existingUserProfile?.churchId?.trim().orEmpty()
+      val isProfileAdmin =
+        existingUserProfile?.role?.trim()?.lowercase(Locale.US) in setOf("admin", "super_admin")
+      if (profileChurchId.isNotEmpty() && isProfileAdmin && !ownedChurches.containsKey(profileChurchId)) {
+        val profileChurch =
+          runCatching {
+            db.collection("churches").document(profileChurchId).get().awaitSafe().toChurch()
+          }.getOrNull()
+        if (profileChurch != null &&
+          OmniAuthEvaluator.isChurchEmailAdminAuthorized(profileChurch, resolvedEmail, firebaseUser.uid)
+        ) {
+          ownedChurches[profileChurch.id] = profileChurch
+        }
+      }
+      if (ownedChurches.isEmpty() && resolvedEmail.isNotEmpty()) {
+        val byContactEmail =
+          runCatching {
+            db.collection("churches").whereEqualTo("adminGoogleEmail", resolvedEmail).get().awaitSafe()
+              .documents.mapNotNull { it.toChurch() }
+          }.getOrDefault(emptyList())
+        byContactEmail
+          .filter { OmniAuthEvaluator.isChurchEmailAdminAuthorized(it, resolvedEmail, firebaseUser.uid) }
+          .forEach { ownedChurches[it.id] = it }
+
+        if (includeLegacyEmailLookup && ownedChurches.isEmpty()) {
+          val byLegacyEmail =
+            runCatching {
+              db.collection("churches").whereEqualTo("email", resolvedEmail).get().awaitSafe()
+                .documents.mapNotNull { it.toChurch() }
+            }.getOrDefault(emptyList())
+          byLegacyEmail
+            .filter { OmniAuthEvaluator.isChurchEmailAdminAuthorized(it, resolvedEmail, firebaseUser.uid) }
+            .forEach { ownedChurches[it.id] = it }
+        }
+      }
+    }
+
+    return ownedChurches.values
+      .filter { it.id.isNotBlank() }
+      .sortedBy { it.name.lowercase(Locale.getDefault()) }
+  }
+
+  private suspend fun toAutoLoginResolution(
+    authorizedList: List<Church>,
+    emptyErrorMessage: String,
+  ): Result<AuthRepository.AdminAutoLoginResolution> =
+    when {
+      authorizedList.isEmpty() -> {
+        runCatching { firebaseAuth.signOut() }
+        Result.failure(OmniAuthException(emptyErrorMessage))
+      }
+      authorizedList.size == 1 -> {
+        finalizeAdminChurchSelection(authorizedList.first())
+          .map { AuthRepository.AdminAutoLoginResolution.SingleChurchResolved(it) }
+      }
+      else -> {
+        Result.success(AuthRepository.AdminAutoLoginResolution.MultipleOwnedChurches(authorizedList))
+      }
+    }
+
   suspend fun signInAdminSmartWithEmailAndPassword(
     email: String,
     password: String,
@@ -131,85 +211,19 @@ internal class AdminChurchAuthUseCase(
         authResult.user ?: return Result.failure(OmniAuthException("Otantifikasyon echwe."))
 
       FirestorePayloadSanitizer.refreshAuthToken(firebaseUser)
-
       val resolvedEmail = (firebaseUser.email ?: cleanEmail).trim().lowercase(Locale.US)
-      val isSuperDev = CryptoSecurity.isSuperDeveloperAccount(resolvedEmail)
-
-      val ownedChurches = linkedMapOf<String, Church>()
-      resolveAdminOwnedChurches(firebaseUser).forEach { church ->
-        ownedChurches[church.id] = church
-      }
-
-      val existingUserProfile =
-        runCatching {
-          db.collection("users").document(firebaseUser.uid).get().await().toUserProfile()
-        }.getOrNull()
-
-      if (isSuperDev) {
-        churchRepository.fetchAllChurches().forEach { church ->
-          ownedChurches[church.id] = church
-        }
-      } else {
-        val profileChurchId = existingUserProfile?.churchId?.trim().orEmpty()
-        val isProfileAdmin =
-          existingUserProfile?.role?.trim()?.lowercase(Locale.US) in setOf("admin", "super_admin")
-        if (profileChurchId.isNotEmpty() && isProfileAdmin && !ownedChurches.containsKey(profileChurchId)) {
-          val profileChurch =
-            runCatching {
-              db.collection("churches").document(profileChurchId).get().awaitSafe().toChurch()
-            }.getOrNull()
-          if (profileChurch != null &&
-            OmniAuthEvaluator.isChurchEmailAdminAuthorized(profileChurch, resolvedEmail, firebaseUser.uid)
-          ) {
-            ownedChurches[profileChurch.id] = profileChurch
-          }
-        }
-        if (ownedChurches.isEmpty()) {
-          val byContactEmail =
-            runCatching {
-              db.collection("churches").whereEqualTo("adminGoogleEmail", resolvedEmail).get().awaitSafe()
-                .documents.mapNotNull { it.toChurch() }
-            }.getOrDefault(emptyList())
-          byContactEmail
-            .filter { OmniAuthEvaluator.isChurchEmailAdminAuthorized(it, resolvedEmail, firebaseUser.uid) }
-            .forEach { ownedChurches[it.id] = it }
-
-          if (ownedChurches.isEmpty()) {
-            val byLegacyEmail =
-              runCatching {
-                db.collection("churches").whereEqualTo("email", resolvedEmail).get().awaitSafe()
-                  .documents.mapNotNull { it.toChurch() }
-              }.getOrDefault(emptyList())
-            byLegacyEmail
-              .filter { OmniAuthEvaluator.isChurchEmailAdminAuthorized(it, resolvedEmail, firebaseUser.uid) }
-              .forEach { ownedChurches[it.id] = it }
-          }
-        }
-      }
-
       val authorizedList =
-        ownedChurches.values
-          .filter { it.id.isNotBlank() }
-          .sortedBy { it.name.lowercase(Locale.getDefault()) }
+        resolveAuthorizedChurchesForSignedInAdmin(
+          firebaseUser = firebaseUser,
+          resolvedEmail = resolvedEmail,
+          includeLegacyEmailLookup = true,
+        )
 
-      when {
-        authorizedList.isEmpty() -> {
-          runCatching { firebaseAuth.signOut() }
-          Result.failure(
-            OmniAuthException(
-              "Okenn legliz pa lye oswa otorize pou imèl \"$resolvedEmail\". Verifye imèl kont administratè legliz ou a."
-            )
-          )
-        }
-        authorizedList.size == 1 -> {
-          val targetChurch = authorizedList.first()
-          finalizeAdminChurchSelection(targetChurch)
-            .map { AuthRepository.AdminAutoLoginResolution.SingleChurchResolved(it) }
-        }
-        else -> {
-          Result.success(AuthRepository.AdminAutoLoginResolution.MultipleOwnedChurches(authorizedList))
-        }
-      }
+      toAutoLoginResolution(
+        authorizedList = authorizedList,
+        emptyErrorMessage =
+          "Okenn legliz pa lye oswa otorize pou imèl \"$resolvedEmail\". Verifye imèl kont administratè legliz ou a.",
+      )
     } catch (e: CancellationException) {
       throw e
     } catch (e: FirebaseAuthInvalidUserException) {
@@ -263,70 +277,18 @@ internal class AdminChurchAuthUseCase(
     return try {
       FirestorePayloadSanitizer.refreshAuthToken(firebaseUser)
       val resolvedEmail = (firebaseUser.email ?: "").trim().lowercase(Locale.US)
-      val isSuperDev = CryptoSecurity.isSuperDeveloperAccount(resolvedEmail)
-
-      val ownedChurches = linkedMapOf<String, Church>()
-      resolveAdminOwnedChurches(firebaseUser).forEach { church ->
-        ownedChurches[church.id] = church
-      }
-
-      if (isSuperDev) {
-        churchRepository.fetchAllChurches().forEach { church ->
-          ownedChurches[church.id] = church
-        }
-      } else {
-        val existingUserProfile =
-          runCatching {
-            db.collection("users").document(firebaseUser.uid).get().await().toUserProfile()
-          }.getOrNull()
-        val profileChurchId = existingUserProfile?.churchId?.trim().orEmpty()
-        val isProfileAdmin =
-          existingUserProfile?.role?.trim()?.lowercase(Locale.US) in setOf("admin", "super_admin")
-        if (profileChurchId.isNotEmpty() && isProfileAdmin && !ownedChurches.containsKey(profileChurchId)) {
-          val profileChurch =
-            runCatching {
-              db.collection("churches").document(profileChurchId).get().awaitSafe().toChurch()
-            }.getOrNull()
-          if (profileChurch != null &&
-            OmniAuthEvaluator.isChurchEmailAdminAuthorized(profileChurch, resolvedEmail, firebaseUser.uid)
-          ) {
-            ownedChurches[profileChurch.id] = profileChurch
-          }
-        }
-        if (ownedChurches.isEmpty() && resolvedEmail.isNotEmpty()) {
-          val byContactEmail =
-            runCatching {
-              db.collection("churches").whereEqualTo("adminGoogleEmail", resolvedEmail).get().awaitSafe()
-                .documents.mapNotNull { it.toChurch() }
-            }.getOrDefault(emptyList())
-          byContactEmail
-            .filter { OmniAuthEvaluator.isChurchEmailAdminAuthorized(it, resolvedEmail, firebaseUser.uid) }
-            .forEach { ownedChurches[it.id] = it }
-        }
-      }
-
       val authorizedList =
-        ownedChurches.values
-          .filter { it.id.isNotBlank() }
-          .sortedBy { it.name.lowercase(Locale.getDefault()) }
+        resolveAuthorizedChurchesForSignedInAdmin(
+          firebaseUser = firebaseUser,
+          resolvedEmail = resolvedEmail,
+          includeLegacyEmailLookup = false,
+        )
 
-      when {
-        authorizedList.isEmpty() -> {
-          runCatching { firebaseAuth.signOut() }
-          Result.failure(
-            OmniAuthException(
-              "Okenn legliz pa lye ak kont Google \"$resolvedEmail\". Verifye kont Google administratè legliz ou a."
-            )
-          )
-        }
-        authorizedList.size == 1 -> {
-          finalizeAdminChurchSelection(authorizedList.first())
-            .map { AuthRepository.AdminAutoLoginResolution.SingleChurchResolved(it) }
-        }
-        else -> {
-          Result.success(AuthRepository.AdminAutoLoginResolution.MultipleOwnedChurches(authorizedList))
-        }
-      }
+      toAutoLoginResolution(
+        authorizedList = authorizedList,
+        emptyErrorMessage =
+          "Okenn legliz pa lye ak kont Google \"$resolvedEmail\". Verifye kont Google administratè legliz ou a.",
+      )
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {

@@ -238,4 +238,21 @@ class OfflineQueueAndUseCasesTest {
     assertEquals(OwnershipEvaluationStatus.NO_AUTH_USER, noUserEval.status)
     assertFalse(noUserEval.isAuthorized)
   }
+
+  @Test
+  fun `OmniAppCheckReadiness rejects unprovisioned or placeholder site keys and accepts real production keys`() {
+    assertFalse(com.zoutiw.omnichurch.core.network.OmniAppCheckReadiness.isValidRecaptchaSiteKey(null))
+    assertFalse(com.zoutiw.omnichurch.core.network.OmniAppCheckReadiness.isValidRecaptchaSiteKey(""))
+    assertFalse(com.zoutiw.omnichurch.core.network.OmniAppCheckReadiness.isValidRecaptchaSiteKey("short_key"))
+    assertFalse(
+      com.zoutiw.omnichurch.core.network.OmniAppCheckReadiness.isValidRecaptchaSiteKey(
+        "YOUR_RECAPTCHA_PLACEHOLDER_SITE_KEY"
+      )
+    )
+    assertTrue(
+      com.zoutiw.omnichurch.core.network.OmniAppCheckReadiness.isValidRecaptchaSiteKey(
+        "6Lc9xQoTAAAAAOx8fRealRecaptchaEnterpriseKey99"
+      )
+    )
+  }
 }
