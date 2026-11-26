@@ -249,3 +249,54 @@ internal fun ObserveAdminWorkspaceAutoLock(
     )
   }
 }
+
+internal object WorkspaceFeedbackMessages {
+  fun googleLinked(lang: String, email: String): String =
+    when (lang.lowercase()) {
+      "fr" -> "Compte Google ($email) lié avec succès !"
+      "en" -> "Google account ($email) linked successfully!"
+      "es" -> "¡Cuenta de Google ($email) vinculada con éxito!"
+      else -> "Kont Google ($email) lye avèk siksè!"
+    }
+
+  fun memberPhotoUpdated(lang: String, cleared: Boolean): String =
+    when (lang.lowercase()) {
+      "fr" -> if (cleared) "Photo de profil supprimée !" else "Photo de profil mise à jour avec succès !"
+      "en" -> if (cleared) "Profile photo removed!" else "Profile photo updated successfully!"
+      "es" -> if (cleared) "¡Foto de perfil eliminada!" else "¡Foto de perfil actualizada con éxito!"
+      else -> if (cleared) "Foto pwofil ou retire avèk siksè!" else "Foto pwofil ou mete ajou avèk siksè!"
+    }
+
+  fun adminPhotoUpdated(lang: String, cleared: Boolean): String =
+    when (lang.lowercase()) {
+      "fr" -> if (cleared) "Photo administrateur supprimée !" else "Photo administrateur mise à jour !"
+      "en" -> if (cleared) "Admin photo removed!" else "Admin photo updated!"
+      "es" -> if (cleared) "¡Foto de administrador eliminada!" else "¡Foto de administrador actualizada!"
+      else -> if (cleared) "Foto administratè a retire avèk siksè!" else "Foto administratè a mete ajou avèk siksè!"
+    }
+
+  fun churchLogoUpdated(lang: String, cleared: Boolean): String =
+    when (lang.lowercase()) {
+      "fr" -> if (cleared) "Logo de l'église supprimé !" else "Logo de l'église mis à jour !"
+      "en" -> if (cleared) "Church logo removed!" else "Church logo updated!"
+      "es" -> if (cleared) "¡Logo de la iglesia eliminado!" else "¡Logo de la iglesia actualizado!"
+      else -> if (cleared) "Logo legliz la retire avèk siksè!" else "Logo legliz la mete ajou avèk siksè!"
+    }
+
+  fun memberRegistered(lang: String, fullName: String, matrikil: String): String =
+    when (lang.lowercase()) {
+      "fr" -> "Membre $fullName enregistré ! ID Matricule : $matrikil"
+      "en" -> "Member $fullName registered! Member ID: $matrikil"
+      "es" -> "¡Miembro $fullName registrado! ID Matrícula: $matrikil"
+      else -> "Manm $fullName anrejistre! ID Matrikil: $matrikil"
+    }
+
+  fun securitySettingsSaved(lang: String): String =
+    when (lang.lowercase()) {
+      "fr" -> "Paramètres de sécurité enregistrés !"
+      "en" -> "Security settings saved!"
+      "es" -> "¡Configuración de seguridad guardada!"
+      else -> "Paramèt sekirite ak PIN rapid yo anrejistre!"
+    }
+}
+

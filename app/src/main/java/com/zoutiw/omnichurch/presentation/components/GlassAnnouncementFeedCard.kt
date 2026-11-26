@@ -61,6 +61,12 @@ import com.zoutiw.omnichurch.ui.theme.GlassWhite
 import com.zoutiw.omnichurch.ui.theme.MutedGlassText
 import com.zoutiw.omnichurch.ui.theme.PureWhite
 
+private val AnnouncementCampaignBadgeBrush =
+  Brush.linearGradient(listOf(BrandGold, BrandOrange))
+private val AnnouncementCampaignBorderColor = PureWhite.copy(alpha = 0.75f)
+private val UnreadPillBgColor = BlueNeon.copy(alpha = 0.22f)
+private val UnreadPillBorderColor = BlueNeon.copy(alpha = 0.85f)
+
 /**
  * 13. PremiumAnnouncementCard — Self-sufficient 3D announcement card matching Phone 1's "Anons Ofisyèl",
  *     upgraded with unread indicator sign ("siy nouvo anons"), click-to-mark-read, timestamp,
@@ -99,8 +105,10 @@ fun PremiumAnnouncementCard(
   val resolvedContent = remember(announcement, languageCode) { announcement.localizedContent(languageCode) }
   val effectiveImage = announcement.effectiveImageUrl
   val shareTitle =
-    if (announcement.department.isNotBlank()) "📢 $resolvedTitle (${announcement.department})"
-    else "📢 $resolvedTitle"
+    remember(announcement.department, resolvedTitle) {
+      if (announcement.department.isNotBlank()) "📢 $resolvedTitle (${announcement.department})"
+      else "📢 $resolvedTitle"
+    }
   val shareBody = resolvedContent
   val timestampLabel =
     remember(announcement.createdAt, announcement.updatedAt, announcement.date, announcement.time, languageCode) {
@@ -150,10 +158,8 @@ fun PremiumAnnouncementCard(
               Modifier.size(42.dp)
                 .shadow(8.dp, CircleShape, ambientColor = BrandOrange)
                 .clip(CircleShape)
-                .background(
-                  Brush.linearGradient(listOf(BrandGold, BrandOrange))
-                )
-                .border(1.5.dp, PureWhite.copy(alpha = 0.75f), CircleShape),
+                .background(AnnouncementCampaignBadgeBrush)
+                .border(1.5.dp, AnnouncementCampaignBorderColor, CircleShape),
             contentAlignment = Alignment.Center,
           ) {
             Icon(
@@ -219,8 +225,8 @@ fun PremiumAnnouncementCard(
           Box(
             modifier =
               Modifier.clip(RoundedCornerShape(50))
-                .background(BlueNeon.copy(alpha = 0.22f))
-                .border(1.dp, BlueNeon.copy(alpha = 0.85f), RoundedCornerShape(50))
+                .background(UnreadPillBgColor)
+                .border(1.dp, UnreadPillBorderColor, RoundedCornerShape(50))
                 .padding(horizontal = 8.dp, vertical = 3.dp)
                 .testTag("announcement_unread_badge_${announcement.id}"),
           ) {

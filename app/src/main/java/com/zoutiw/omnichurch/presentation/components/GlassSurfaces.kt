@@ -58,6 +58,72 @@ import com.zoutiw.omnichurch.ui.theme.OmniBrushes
 import com.zoutiw.omnichurch.ui.theme.PureWhite
 import com.zoutiw.omnichurch.ui.theme.RoyalBlue
 
+private val DefaultGlassPanelBorderColors =
+  listOf(
+    GlassWhite.copy(alpha = 0.45f),
+    ElectricBlue.copy(alpha = 0.25f),
+    GlassWhite.copy(alpha = 0.12f),
+  )
+
+private val DefaultGlassPanelBorderBrush = Brush.linearGradient(DefaultGlassPanelBorderColors)
+private val GlassPanelAmbientColor = ElectricBlue.copy(alpha = 0.28f)
+private val GlassPanelSpecularBrush =
+  Brush.horizontalGradient(
+    listOf(
+      Color.Transparent,
+      PureWhite.copy(alpha = 0.45f),
+      BlueNeon.copy(alpha = 0.40f),
+      Color.Transparent,
+    )
+  )
+
+private val DefaultCardBorderBrush =
+  Brush.linearGradient(
+    listOf(
+      GlassWhite.copy(alpha = 0.42f),
+      ElectricBlue.copy(alpha = 0.24f),
+      Color(0x1FDCEBFF),
+    )
+  )
+
+private val DefaultCardBgBrush =
+  Brush.verticalGradient(
+    listOf(
+      Color(0xD9152E5E),
+      Color(0xE60B1A38),
+      Color(0xF2061024),
+    )
+  )
+
+private val HighlightedCardBgBrush =
+  Brush.verticalGradient(
+    listOf(
+      Color(0xFF1AA8FF).copy(alpha = 0.75f),
+      ElectricBlue.copy(alpha = 0.65f),
+      RoyalBlue.copy(alpha = 0.88f),
+    )
+  )
+
+private val DefaultBlueNeonCardSpecularBrush =
+  Brush.horizontalGradient(
+    listOf(
+      Color.Transparent,
+      PureWhite.copy(alpha = 0.32f),
+      BlueNeon.copy(alpha = 0.22f),
+      Color.Transparent,
+    )
+  )
+
+private val TopBarBadgeBgBrush =
+  Brush.horizontalGradient(
+    listOf(Color(0xFF6B4209), Color(0xFF9E630D), Color(0xFF523206))
+  )
+
+private val TopBarBadgeBorderBrush =
+  Brush.horizontalGradient(
+    listOf(PureWhite.copy(alpha = 0.7f), BrandGold, BrandOrange)
+  )
+
 /**
  * 1. GlassPanel — Translucent 3D glass container with layered depth, specular top edge highlight,
  *    and ambient glow.
@@ -66,45 +132,37 @@ import com.zoutiw.omnichurch.ui.theme.RoyalBlue
 fun GlassPanel(
   modifier: Modifier = Modifier,
   cornerRadius: Dp = 22.dp,
-  borderColors: List<Color> =
-    listOf(
-      GlassWhite.copy(alpha = 0.45f),
-      ElectricBlue.copy(alpha = 0.25f),
-      GlassWhite.copy(alpha = 0.12f),
-    ),
+  borderColors: List<Color> = DefaultGlassPanelBorderColors,
   backgroundBrush: Brush = OmniBrushes.GlassCardBrush,
   contentPadding: PaddingValues = PaddingValues(16.dp),
   content: @Composable BoxScope.() -> Unit,
 ) {
-  val shape = RoundedCornerShape(cornerRadius)
+  val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
+  val borderBrush =
+    remember(borderColors) {
+      if (borderColors === DefaultGlassPanelBorderColors) DefaultGlassPanelBorderBrush
+      else Brush.linearGradient(borderColors)
+    }
   Box(
     modifier =
       modifier
         .shadow(
           elevation = 12.dp,
           shape = shape,
-          ambientColor = ElectricBlue.copy(alpha = 0.28f),
+          ambientColor = GlassPanelAmbientColor,
           spotColor = DeepNavy,
         )
         .clip(shape)
         .background(backgroundBrush)
         .border(
           width = 1.2.dp,
-          brush = Brush.linearGradient(borderColors),
+          brush = borderBrush,
           shape = shape,
         )
         .drawBehind {
-          // Specular top edge reflection line
+          // Specular top edge reflection line (zero allocations during draw)
           drawLine(
-            brush =
-              Brush.horizontalGradient(
-                listOf(
-                  Color.Transparent,
-                  PureWhite.copy(alpha = 0.45f),
-                  BlueNeon.copy(alpha = 0.40f),
-                  Color.Transparent,
-                )
-              ),
+            brush = GlassPanelSpecularBrush,
             start = Offset(size.width * 0.12f, 1.dp.toPx()),
             end = Offset(size.width * 0.88f, 1.dp.toPx()),
             strokeWidth = 1.5.dp.toPx(),
@@ -138,39 +196,34 @@ fun PremiumGlassCard(
       label = "card_press_scale",
     )
 
-  val shape = RoundedCornerShape(cornerRadius)
+  val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
   val borderBrush =
-    if (isHighlighted) {
-      Brush.linearGradient(
-        listOf(PureWhite.copy(alpha = 0.90f), accentColor, ElectricBlue.copy(alpha = 0.75f))
-      )
-    } else {
-      Brush.linearGradient(
-        listOf(
-          GlassWhite.copy(alpha = 0.42f),
-          ElectricBlue.copy(alpha = 0.24f),
-          Color(0x1FDCEBFF),
+    remember(isHighlighted, accentColor) {
+      if (isHighlighted) {
+        Brush.linearGradient(
+          listOf(PureWhite.copy(alpha = 0.90f), accentColor, ElectricBlue.copy(alpha = 0.75f))
         )
-      )
+      } else {
+        DefaultCardBorderBrush
+      }
     }
 
-  val bgBrush =
-    if (isHighlighted) {
-      Brush.verticalGradient(
-        listOf(
-          Color(0xFF1AA8FF).copy(alpha = 0.75f),
-          ElectricBlue.copy(alpha = 0.65f),
-          RoyalBlue.copy(alpha = 0.88f),
+  val bgBrush = if (isHighlighted) HighlightedCardBgBrush else DefaultCardBgBrush
+
+  val specularBrush =
+    remember(isHighlighted, accentColor) {
+      if (!isHighlighted && accentColor == BlueNeon) {
+        DefaultBlueNeonCardSpecularBrush
+      } else {
+        Brush.horizontalGradient(
+          listOf(
+            Color.Transparent,
+            PureWhite.copy(alpha = if (isHighlighted) 0.75f else 0.32f),
+            accentColor.copy(alpha = if (isHighlighted) 0.60f else 0.22f),
+            Color.Transparent,
+          )
         )
-      )
-    } else {
-      Brush.verticalGradient(
-        listOf(
-          Color(0xD9152E5E),
-          Color(0xE60B1A38),
-          Color(0xF2061024),
-        )
-      )
+      }
     }
 
   val clickableMod =
@@ -198,17 +251,9 @@ fun PremiumGlassCard(
         .background(bgBrush)
         .border(width = if (isHighlighted) 1.7.dp else 1.1.dp, brush = borderBrush, shape = shape)
         .drawBehind {
-          // Physical top-edge specular reflection
+          // Physical top-edge specular reflection (zero allocations during draw)
           drawLine(
-            brush =
-              Brush.horizontalGradient(
-                listOf(
-                  Color.Transparent,
-                  PureWhite.copy(alpha = if (isHighlighted) 0.75f else 0.32f),
-                  accentColor.copy(alpha = if (isHighlighted) 0.60f else 0.22f),
-                  Color.Transparent,
-                )
-              ),
+            brush = specularBrush,
             start = Offset(size.width * 0.14f, 1.dp.toPx()),
             end = Offset(size.width * 0.86f, 1.dp.toPx()),
             strokeWidth = 1.6.dp.toPx(),
@@ -273,14 +318,10 @@ fun GlassTopBar(
         modifier =
           Modifier.shadow(8.dp, RoundedCornerShape(50), ambientColor = BrandOrange)
             .clip(RoundedCornerShape(50))
-            .background(
-              Brush.horizontalGradient(
-                listOf(Color(0xFF6B4209), Color(0xFF9E630D), Color(0xFF523206))
-              )
-            )
+            .background(TopBarBadgeBgBrush)
             .border(
               1.3.dp,
-              Brush.horizontalGradient(listOf(PureWhite.copy(alpha = 0.7f), BrandGold, BrandOrange)),
+              TopBarBadgeBorderBrush,
               RoundedCornerShape(50),
             )
             .padding(horizontal = 14.dp, vertical = 6.dp),
@@ -311,3 +352,4 @@ fun GlassTopBar(
     }
   }
 }
+

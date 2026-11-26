@@ -343,8 +343,18 @@ fun PremiumSuccessPanel(
 
 /** 16. GlassLoadingIndicator — Pulsing neon ring loader for real-time Firebase queries. */
 @Composable
+fun GlassLoadingIndicator(modifier: Modifier = Modifier) {
+  Box(
+    modifier = modifier.fillMaxWidth().padding(24.dp),
+    contentAlignment = Alignment.Center,
+  ) {
+    CircularProgressIndicator(color = BrandGold)
+  }
+}
+
+@Composable
 fun GlassLoadingIndicator(
-  message: String = stringResource(R.string.common_loading),
+  message: String,
   modifier: Modifier = Modifier,
 ) {
   Column(

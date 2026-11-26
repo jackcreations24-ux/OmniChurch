@@ -317,12 +317,7 @@ internal fun NavGraphBuilder.registerSecondaryWorkspaceRoutes(ctx: WorkspaceNavC
           googlePhotoUrl = payload.photoUrl,
           onSuccess = {
             ctx.viewModel.setFeedbackMessage(
-              when (ctx.currentLanguageCode.lowercase()) {
-                "fr" -> "Compte Google (${payload.email}) lié avec succès !"
-                "en" -> "Google account (${payload.email}) linked successfully!"
-                "es" -> "¡Cuenta de Google (${payload.email}) vinculada con éxito!"
-                else -> "Kont Google (${payload.email}) lye avèk siksè!"
-              }
+              WorkspaceFeedbackMessages.googleLinked(ctx.currentLanguageCode, payload.email)
             )
           },
           onError = { err -> ctx.viewModel.setFeedbackMessage(err) },
@@ -334,14 +329,11 @@ internal fun NavGraphBuilder.registerSecondaryWorkspaceRoutes(ctx: WorkspaceNavC
             ctx.viewModel.updateMemberPhoto(
               photoDataUrl = newPhotoUrl,
               onSuccess = {
-                val cleared = newPhotoUrl.isBlank()
                 ctx.viewModel.setFeedbackMessage(
-                  when (ctx.currentLanguageCode.lowercase()) {
-                    "fr" -> if (cleared) "Photo de profil supprimée !" else "Photo de profil mise à jour avec succès !"
-                    "en" -> if (cleared) "Profile photo removed!" else "Profile photo updated successfully!"
-                    "es" -> if (cleared) "¡Foto de perfil eliminada!" else "¡Foto de perfil actualizada con éxito!"
-                    else -> if (cleared) "Foto pwofil ou retire avèk siksè!" else "Foto pwofil ou mete ajou avèk siksè!"
-                  }
+                  WorkspaceFeedbackMessages.memberPhotoUpdated(
+                    ctx.currentLanguageCode,
+                    newPhotoUrl.isBlank(),
+                  )
                 )
               },
               onError = { err -> ctx.viewModel.setFeedbackMessage(err) },
@@ -354,14 +346,11 @@ internal fun NavGraphBuilder.registerSecondaryWorkspaceRoutes(ctx: WorkspaceNavC
             ctx.viewModel.updateAdminPhoto(
               photoDataUrl = newPhotoUrl,
               onSuccess = {
-                val cleared = newPhotoUrl.isBlank()
                 ctx.viewModel.setFeedbackMessage(
-                  when (ctx.currentLanguageCode.lowercase()) {
-                    "fr" -> if (cleared) "Photo administrateur supprimée !" else "Photo administrateur mise à jour !"
-                    "en" -> if (cleared) "Admin photo removed!" else "Admin photo updated!"
-                    "es" -> if (cleared) "¡Foto de administrador eliminada!" else "¡Foto de administrador actualizada!"
-                    else -> if (cleared) "Foto administratè a retire avèk siksè!" else "Foto administratè a mete ajou avèk siksè!"
-                  }
+                  WorkspaceFeedbackMessages.adminPhotoUpdated(
+                    ctx.currentLanguageCode,
+                    newPhotoUrl.isBlank(),
+                  )
                 )
               },
               onError = { err -> ctx.viewModel.setFeedbackMessage(err) },
@@ -374,14 +363,11 @@ internal fun NavGraphBuilder.registerSecondaryWorkspaceRoutes(ctx: WorkspaceNavC
             ctx.viewModel.updateChurchLogo(
               logoDataUrl = newLogoUrl,
               onSuccess = {
-                val cleared = newLogoUrl.isBlank()
                 ctx.viewModel.setFeedbackMessage(
-                  when (ctx.currentLanguageCode.lowercase()) {
-                    "fr" -> if (cleared) "Logo de l'église supprimé !" else "Logo de l'église mis à jour !"
-                    "en" -> if (cleared) "Church logo removed!" else "Church logo updated!"
-                    "es" -> if (cleared) "¡Logo de la iglesia eliminado!" else "¡Logo de la iglesia actualizado!"
-                    else -> if (cleared) "Logo legliz la retire avèk siksè!" else "Logo legliz la mete ajou avèk siksè!"
-                  }
+                  WorkspaceFeedbackMessages.churchLogoUpdated(
+                    ctx.currentLanguageCode,
+                    newLogoUrl.isBlank(),
+                  )
                 )
               },
               onError = { err -> ctx.viewModel.setFeedbackMessage(err) },
@@ -402,12 +388,11 @@ internal fun NavGraphBuilder.registerSecondaryWorkspaceRoutes(ctx: WorkspaceNavC
               ministryRole = ministryRole,
               onSuccess = { newMem ->
                 ctx.viewModel.setFeedbackMessage(
-                  when (ctx.currentLanguageCode.lowercase()) {
-                    "fr" -> "Membre ${newMem.fullName} enregistré ! ID Matricule : ${newMem.effectiveMatrikil}"
-                    "en" -> "Member ${newMem.fullName} registered! Member ID: ${newMem.effectiveMatrikil}"
-                    "es" -> "¡Miembro ${newMem.fullName} registrado! ID Matrícula: ${newMem.effectiveMatrikil}"
-                    else -> "Manm ${newMem.fullName} anrejistre! ID Matrikil: ${newMem.effectiveMatrikil}"
-                  }
+                  WorkspaceFeedbackMessages.memberRegistered(
+                    ctx.currentLanguageCode,
+                    newMem.fullName,
+                    newMem.effectiveMatrikil,
+                  )
                 )
               },
               onError = { err -> ctx.viewModel.setFeedbackMessage(err) },
@@ -442,12 +427,7 @@ internal fun NavGraphBuilder.registerSecondaryWorkspaceRoutes(ctx: WorkspaceNavC
               languageCode = ctx.currentLanguageCode,
               onSuccess = {
                 ctx.viewModel.setFeedbackMessage(
-                  when (ctx.currentLanguageCode.lowercase()) {
-                    "fr" -> "Paramètres de sécurité enregistrés !"
-                    "en" -> "Security settings saved!"
-                    "es" -> "¡Configuración de seguridad guardada!"
-                    else -> "Paramèt sekirite ak PIN rapid yo anrejistre!"
-                  }
+                  WorkspaceFeedbackMessages.securitySettingsSaved(ctx.currentLanguageCode)
                 )
               },
               onError = { err -> ctx.viewModel.setFeedbackMessage(err) },

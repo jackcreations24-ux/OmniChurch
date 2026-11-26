@@ -16,8 +16,17 @@
 -keep class com.zoutiw.omnichurch.data.models.** { *; }
 -keepclassmembers class com.zoutiw.omnichurch.data.models.** { *; }
 
+-keep class com.zoutiw.omnichurch.data.repositories.** { *; }
+-keepclassmembers class com.zoutiw.omnichurch.data.repositories.** { *; }
+
 -keep class com.zoutiw.omnichurch.core.ads.** { *; }
 -keepclassmembers class com.zoutiw.omnichurch.core.ads.** { *; }
+
+-keep class com.zoutiw.omnichurch.core.donations.** { *; }
+-keepclassmembers class com.zoutiw.omnichurch.core.donations.** { *; }
+
+-keep class com.zoutiw.omnichurch.core.network.** { *; }
+-keepclassmembers class com.zoutiw.omnichurch.core.network.** { *; }
 
 -keep class com.zoutiw.omnichurch.core.utilities.** { *; }
 -keepclassmembers class com.zoutiw.omnichurch.core.utilities.** { *; }
@@ -31,6 +40,11 @@
 -keep class androidx.credentials.** { *; }
 -keepclassmembers class androidx.credentials.** { *; }
 -dontwarn androidx.credentials.**
+
+# ML Kit Barcode Scanning & CameraX
+-keep class com.google.mlkit.** { *; }
+-keepclassmembers class com.google.mlkit.** { *; }
+-dontwarn com.google.mlkit.**
 
 # ZXing QR Code Generation
 -keep class com.google.zxing.** { *; }
@@ -47,3 +61,4 @@
 # Coil Image Loading
 -keep class coil.** { *; }
 -dontwarn coil.**
+

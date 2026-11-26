@@ -118,7 +118,9 @@ fun PremiumServiceCard(
   ) {
     currentEpochMillis = System.currentTimeMillis()
     while (true) {
-      delay(1000L)
+      val activeTick =
+        service.isTimerTicking(currentEpochMillis) || service.isLiveBadgeActive(currentEpochMillis)
+      delay(if (activeTick) 1_000L else 15_000L)
       val now = System.currentTimeMillis()
       currentEpochMillis = now
       if (service.isPermanentlyLocked(now)) break
@@ -148,21 +150,26 @@ fun PremiumServiceCard(
       ?: service.categoryLabelHt
 
   val shareTitle =
-    "⛪ ${service.effectiveTitle}" +
-      (resolvedChurchTitle.takeIf { it.isNotBlank() }?.let { " — $it" } ?: "")
-  val shareBody = buildString {
-    append("📌 Kategori: ${service.categoryLabelHt}")
-    if (serviceDateSubtitle.isNotBlank()) {
-      append("\n📅 Dat & Lè: $serviceDateSubtitle")
+    remember(service.effectiveTitle, resolvedChurchTitle) {
+      "⛪ ${service.effectiveTitle}" +
+        (resolvedChurchTitle.takeIf { it.isNotBlank() }?.let { " — $it" } ?: "")
     }
-    service.theme?.takeIf { it.isNotBlank() }?.let { append("\n✨ Tèm: $it") }
-    service.passage?.takeIf { it.isNotBlank() }?.let { append("\n📖 Pasaj: $it") }
-    service.preacher?.takeIf { it.isNotBlank() }?.let { append("\n🎙️ Predikatè: $it") }
-    service.leader?.takeIf { it.isNotBlank() }?.let { append("\n🙏 Dirijan: $it") }
-    if (!service.description.isNullOrBlank()) {
-      append("\n\n${service.description}")
+  val shareBody =
+    remember(service, serviceDateSubtitle) {
+      buildString {
+        append("📌 Kategori: ${service.categoryLabelHt}")
+        if (serviceDateSubtitle.isNotBlank()) {
+          append("\n📅 Dat & Lè: $serviceDateSubtitle")
+        }
+        service.theme?.takeIf { it.isNotBlank() }?.let { append("\n✨ Tèm: $it") }
+        service.passage?.takeIf { it.isNotBlank() }?.let { append("\n📖 Pasaj: $it") }
+        service.preacher?.takeIf { it.isNotBlank() }?.let { append("\n🎙️ Predikatè: $it") }
+        service.leader?.takeIf { it.isNotBlank() }?.let { append("\n🙏 Dirijan: $it") }
+        if (!service.description.isNullOrBlank()) {
+          append("\n\n${service.description}")
+        }
+      }
     }
-  }
 
   val triggerShare: () -> Unit = {
     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)

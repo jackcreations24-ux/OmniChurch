@@ -47,36 +47,86 @@ data class PendingOfflineAttendance(
   val homeChurchName: String?,
   val hostChurchName: String?,
 ) {
+  fun toMap(): Map<String, Any> =
+    linkedMapOf(
+      "attendanceDocId" to attendanceDocId,
+      "churchId" to churchId,
+      "serviceId" to serviceId,
+      "serviceTitle" to serviceTitle,
+      "serviceCategory" to serviceCategory,
+      "serviceDate" to serviceDate,
+      "memberDocId" to memberDocId,
+      "memberId" to memberId,
+      "memberName" to memberName,
+      "memberPhone" to (memberPhone ?: ""),
+      "memberDepartment" to (memberDepartment ?: ""),
+      "memberPhotoUrl" to (memberPhotoUrl ?: ""),
+      "userId" to userId,
+      "recordedBy" to recordedBy,
+      "attendanceStatus" to attendanceStatus,
+      "lateMinutes" to lateMinutes,
+      "lateToleranceMinutes" to lateToleranceMinutes,
+      "checkInMethod" to checkInMethod,
+      "barcodeToken" to barcodeToken,
+      "timestampMillis" to timestampMillis,
+      "timestampIso" to timestampIso,
+      "isVisitor" to isVisitor,
+      "homeChurchId" to (homeChurchId ?: ""),
+      "homeChurchName" to (homeChurchName ?: ""),
+      "hostChurchName" to (hostChurchName ?: ""),
+    )
+
   fun toJson(): JSONObject =
     JSONObject().apply {
-      put("attendanceDocId", attendanceDocId)
-      put("churchId", churchId)
-      put("serviceId", serviceId)
-      put("serviceTitle", serviceTitle)
-      put("serviceCategory", serviceCategory)
-      put("serviceDate", serviceDate)
-      put("memberDocId", memberDocId)
-      put("memberId", memberId)
-      put("memberName", memberName)
-      put("memberPhone", memberPhone ?: "")
-      put("memberDepartment", memberDepartment ?: "")
-      put("memberPhotoUrl", memberPhotoUrl ?: "")
-      put("userId", userId)
-      put("recordedBy", recordedBy)
-      put("attendanceStatus", attendanceStatus)
-      put("lateMinutes", lateMinutes)
-      put("lateToleranceMinutes", lateToleranceMinutes)
-      put("checkInMethod", checkInMethod)
-      put("barcodeToken", barcodeToken)
-      put("timestampMillis", timestampMillis)
-      put("timestampIso", timestampIso)
-      put("isVisitor", isVisitor)
-      put("homeChurchId", homeChurchId ?: "")
-      put("homeChurchName", homeChurchName ?: "")
-      put("hostChurchName", hostChurchName ?: "")
+      for ((k, v) in toMap()) {
+        put(k, v)
+      }
     }
 
   companion object {
+    fun fromMap(map: Map<String, Any?>): PendingOfflineAttendance? {
+      val docId = (map["attendanceDocId"] as? String)?.trim().orEmpty()
+      val churchId = (map["churchId"] as? String)?.trim().orEmpty()
+      val serviceId = (map["serviceId"] as? String)?.trim().orEmpty()
+      val memberDocId = (map["memberDocId"] as? String)?.trim().orEmpty()
+      if (docId.isEmpty() || churchId.isEmpty() || serviceId.isEmpty() || memberDocId.isEmpty()) {
+        return null
+      }
+      return PendingOfflineAttendance(
+        attendanceDocId = docId,
+        churchId = churchId,
+        serviceId = serviceId,
+        serviceTitle = (map["serviceTitle"] as? String).orEmpty(),
+        serviceCategory = (map["serviceCategory"] as? String).orEmpty().ifBlank { "dimanche_matin" },
+        serviceDate = (map["serviceDate"] as? String).orEmpty(),
+        memberDocId = memberDocId,
+        memberId = (map["memberId"] as? String).orEmpty(),
+        memberName = (map["memberName"] as? String).orEmpty(),
+        memberPhone = (map["memberPhone"] as? String)?.takeIf { it.isNotBlank() },
+        memberDepartment = (map["memberDepartment"] as? String)?.takeIf { it.isNotBlank() },
+        memberPhotoUrl = (map["memberPhotoUrl"] as? String)?.takeIf { it.isNotBlank() },
+        userId = (map["userId"] as? String).orEmpty().ifBlank { memberDocId },
+        recordedBy = (map["recordedBy"] as? String).orEmpty(),
+        attendanceStatus = (map["attendanceStatus"] as? String).orEmpty().ifBlank { "on_time" },
+        lateMinutes = (map["lateMinutes"] as? Number)?.toInt() ?: (map["lateMinutes"] as? String)?.toIntOrNull() ?: 0,
+        lateToleranceMinutes =
+          (map["lateToleranceMinutes"] as? Number)?.toInt()
+            ?: (map["lateToleranceMinutes"] as? String)?.toIntOrNull()
+            ?: 15,
+        checkInMethod = (map["checkInMethod"] as? String).orEmpty().ifBlank { "qr_scan" },
+        barcodeToken = (map["barcodeToken"] as? String).orEmpty(),
+        timestampMillis =
+          (map["timestampMillis"] as? Number)?.toLong()
+            ?: (map["timestampMillis"] as? String)?.toLongOrNull()
+            ?: System.currentTimeMillis(),
+        timestampIso = (map["timestampIso"] as? String).orEmpty(),
+        isVisitor = (map["isVisitor"] as? Boolean) ?: ((map["isVisitor"] as? String)?.toBooleanStrictOrNull() ?: false),
+        homeChurchId = (map["homeChurchId"] as? String)?.takeIf { it.isNotBlank() },
+        homeChurchName = (map["homeChurchName"] as? String)?.takeIf { it.isNotBlank() },
+        hostChurchName = (map["hostChurchName"] as? String)?.takeIf { it.isNotBlank() },
+      )
+    }
+
     fun fromJson(obj: JSONObject): PendingOfflineAttendance? {
       val docId = obj.optString("attendanceDocId").trim()
       val churchId = obj.optString("churchId").trim()
@@ -116,9 +166,25 @@ data class PendingOfflineAttendance(
   }
 }
 
-class OfflineAttendanceQueueManager(context: Context) {
-  private val prefs =
-    context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+class OfflineAttendanceQueueManager(
+  private val readRawJson: () -> String?,
+  private val writeRawJson: (String) -> Unit,
+) {
+  constructor(context: Context) : this(
+    readRawJson = {
+      context.applicationContext
+        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getString(KEY_QUEUE_JSON, null)
+    },
+    writeRawJson = { json ->
+      context.applicationContext
+        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .edit()
+        .putString(KEY_QUEUE_JSON, json)
+        .apply()
+    },
+  )
+
   private val lock = Any()
 
   private val _pendingItemsState = MutableStateFlow(loadQueueFromDisk())
@@ -249,7 +315,21 @@ class OfflineAttendanceQueueManager(context: Context) {
   }
 
   private fun loadQueueFromDisk(): List<PendingOfflineAttendance> {
-    val raw = prefs.getString(KEY_QUEUE_JSON, null) ?: return emptyList()
+    val raw = readRawJson() ?: return emptyList()
+    if (raw.startsWith("JVM_QUEUE_V1\n")) {
+      return raw
+        .removePrefix("JVM_QUEUE_V1\n")
+        .lines()
+        .filter { it.isNotBlank() }
+        .mapNotNull { line ->
+          val map =
+            line.split("\t").associate { pair ->
+              val idx = pair.indexOf('=')
+              if (idx >= 0) pair.substring(0, idx) to pair.substring(idx + 1) else pair to ""
+            }
+          PendingOfflineAttendance.fromMap(map)
+        }
+    }
     return try {
       val arr = JSONArray(raw)
       buildList {
@@ -264,9 +344,18 @@ class OfflineAttendanceQueueManager(context: Context) {
   }
 
   private fun saveQueueToDisk(items: List<PendingOfflineAttendance>) {
-    val arr = JSONArray()
-    items.forEach { arr.put(it.toJson()) }
-    prefs.edit().putString(KEY_QUEUE_JSON, arr.toString()).apply()
+    val serialized =
+      try {
+        val arr = JSONArray()
+        items.forEach { arr.put(it.toJson()) }
+        arr.toString()
+      } catch (_: RuntimeException) {
+        "JVM_QUEUE_V1\n" +
+          items.joinToString("\n") { item ->
+            item.toMap().entries.joinToString("\t") { (k, v) -> "$k=$v" }
+          }
+      }
+    writeRawJson(serialized)
   }
 
   companion object {

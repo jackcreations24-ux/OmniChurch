@@ -90,6 +90,33 @@ class AdminAuthViewModel(
     )
   }
 
+  private fun <T> launchAdminAction(
+    clearInfoMessage: Boolean = true,
+    recordActivityOnSuccess: Boolean = true,
+    onError: (String) -> Unit = { _authError.value = it },
+    action: suspend () -> Result<T>,
+    onSuccess: (T) -> Unit,
+  ) {
+    if (_isBusy.value) return
+    _isBusy.value = true
+    _authError.value = null
+    if (clearInfoMessage) _infoMessage.value = null
+    viewModelScope.launch {
+      val res = action()
+      _isBusy.value = false
+      res
+        .onSuccess { value ->
+          if (recordActivityOnSuccess) recordUserInteraction()
+          onSuccess(value)
+        }
+        .onFailure { err ->
+          val msg = err.message ?: "Erè pandan operasyon administratè."
+          _authError.value = msg
+          onError(msg)
+        }
+    }
+  }
+
   fun signInAdminWithEmailPassword(
     church: Church?,
     email: String,
@@ -97,24 +124,15 @@ class AdminAuthViewModel(
     languageCode: String,
     onSuccess: (Church) -> Unit,
   ) {
-    if (_isBusy.value) return
-    val safeChurch = church ?: run {
-      _authError.value = AdminAuthLocalizedMessages.selectChurchFirst(languageCode)
-      return
-    }
-    _isBusy.value = true
-    _authError.value = null
-    _infoMessage.value = null
-    viewModelScope.launch {
-      val res = authRepository.signInAdminWithEmailAndPassword(safeChurch, email, password, languageCode)
-      _isBusy.value = false
-      res
-        .onSuccess { authorizedChurch ->
-          recordUserInteraction()
-          onSuccess(authorizedChurch)
-        }
-        .onFailure { err -> _authError.value = err.message }
-    }
+    val safeChurch =
+      church ?: run {
+        _authError.value = AdminAuthLocalizedMessages.selectChurchFirst(languageCode)
+        return
+      }
+    launchAdminAction(
+      action = { authRepository.signInAdminWithEmailAndPassword(safeChurch, email, password, languageCode) },
+      onSuccess = onSuccess,
+    )
   }
 
   fun verifySignedInAdminGoogleAccount(
@@ -122,43 +140,28 @@ class AdminAuthViewModel(
     languageCode: String,
     onSuccess: (Church) -> Unit,
   ) {
-    if (_isBusy.value) return
-    if (church == null) {
-      _authError.value = AdminAuthLocalizedMessages.selectChurchFirst(languageCode)
-      return
-    }
-    _isBusy.value = true
-    _authError.value = null
-    _infoMessage.value = null
-    viewModelScope.launch {
-      val res = authRepository.verifySignedInAdminGoogleAccount(church, languageCode)
-      _isBusy.value = false
-      res
-        .onSuccess { authorizedChurch ->
-          recordUserInteraction()
-          onSuccess(authorizedChurch)
-        }
-        .onFailure { err -> _authError.value = err.message }
-    }
+    val safeChurch =
+      church ?: run {
+        _authError.value = AdminAuthLocalizedMessages.selectChurchFirst(languageCode)
+        return
+      }
+    launchAdminAction(
+      action = { authRepository.verifySignedInAdminGoogleAccount(safeChurch, languageCode) },
+      onSuccess = onSuccess,
+    )
   }
 
   fun sendPasswordResetEmail(
     email: String,
     languageCode: String,
   ) {
-    if (_isBusy.value) return
-    _isBusy.value = true
-    _authError.value = null
-    _infoMessage.value = null
-    viewModelScope.launch {
-      val res = authRepository.sendPasswordResetEmail(email, languageCode)
-      _isBusy.value = false
-      res
-        .onSuccess {
-          _infoMessage.value = AdminAuthLocalizedMessages.passwordResetSent(languageCode, email)
-        }
-        .onFailure { err -> _authError.value = err.message }
-    }
+    launchAdminAction(
+      recordActivityOnSuccess = false,
+      action = { authRepository.sendPasswordResetEmail(email, languageCode) },
+      onSuccess = {
+        _infoMessage.value = AdminAuthLocalizedMessages.passwordResetSent(languageCode, email)
+      },
+    )
   }
 
   fun unlockWithQuickPin(
@@ -167,24 +170,15 @@ class AdminAuthViewModel(
     languageCode: String,
     onSuccess: (Church) -> Unit,
   ) {
-    if (_isBusy.value) return
-    if (church == null) {
-      _authError.value = AdminAuthLocalizedMessages.selectChurchFirst(languageCode)
-      return
-    }
-    _isBusy.value = true
-    _authError.value = null
-    _infoMessage.value = null
-    viewModelScope.launch {
-      val res = authRepository.verifyQuickPinAndUpgradeIfNeeded(church, pin, languageCode)
-      _isBusy.value = false
-      res
-        .onSuccess { updatedChurch ->
-          recordUserInteraction()
-          onSuccess(updatedChurch)
-        }
-        .onFailure { err -> _authError.value = err.message }
-    }
+    val safeChurch =
+      church ?: run {
+        _authError.value = AdminAuthLocalizedMessages.selectChurchFirst(languageCode)
+        return
+      }
+    launchAdminAction(
+      action = { authRepository.verifyQuickPinAndUpgradeIfNeeded(safeChurch, pin, languageCode) },
+      onSuccess = onSuccess,
+    )
   }
 
   fun authorizeViaBiometric(
@@ -208,19 +202,16 @@ class AdminAuthViewModel(
     pin: String,
     languageCode: String,
   ) {
-    if (_isBusy.value || church == null) return
-    _isBusy.value = true
-    _authError.value = null
-    viewModelScope.launch {
-      val res = authRepository.verifyLegacyPinStep(church, pin, languageCode)
-      _isBusy.value = false
-      res
-        .onSuccess {
-          _legacyVerifiedChurchId.value = church.id
-          _legacyVerifiedPin.value = pin.trim()
-        }
-        .onFailure { err -> _authError.value = err.message }
-    }
+    val safeChurch = church ?: return
+    launchAdminAction(
+      clearInfoMessage = false,
+      recordActivityOnSuccess = false,
+      action = { authRepository.verifyLegacyPinStep(safeChurch, pin, languageCode) },
+      onSuccess = {
+        _legacyVerifiedChurchId.value = safeChurch.id
+        _legacyVerifiedPin.value = pin.trim()
+      },
+    )
   }
 
   fun completeLegacyMigration(
@@ -231,9 +222,9 @@ class AdminAuthViewModel(
     languageCode: String,
     onSuccess: (Church) -> Unit,
   ) {
-    if (_isBusy.value || church == null) return
+    val safeChurch = church ?: return
     val oldPin = _legacyVerifiedPin.value
-    if (oldPin.isNullOrBlank() || _legacyVerifiedChurchId.value != church.id) {
+    if (oldPin.isNullOrBlank() || _legacyVerifiedChurchId.value != safeChurch.id) {
       _authError.value = "Verifye ansyen kòd PIN lan anvan."
       return
     }
@@ -241,26 +232,22 @@ class AdminAuthViewModel(
       _authError.value = AdminAuthLocalizedMessages.passwordMismatch(languageCode)
       return
     }
-    _isBusy.value = true
-    _authError.value = null
-    viewModelScope.launch {
-      val res =
+    launchAdminAction(
+      clearInfoMessage = false,
+      action = {
         authRepository.migrateLegacyPinChurchToCloudOwner(
-          church = church,
+          church = safeChurch,
           verifiedOldPin = oldPin,
           adminEmail = adminEmail,
           newPassword = newPassword,
           languageCode = languageCode,
         )
-      _isBusy.value = false
-      res
-        .onSuccess { migratedChurch ->
-          resetLegacyMigrationStep()
-          recordUserInteraction()
-          onSuccess(migratedChurch)
-        }
-        .onFailure { err -> _authError.value = err.message }
-    }
+      },
+      onSuccess = { migratedChurch ->
+        resetLegacyMigrationStep()
+        onSuccess(migratedChurch)
+      },
+    )
   }
 
   fun createChurchWithEmailPassword(
@@ -273,16 +260,12 @@ class AdminAuthViewModel(
     languageCode: String,
     onSuccess: (Church) -> Unit,
   ) {
-    if (_isBusy.value) return
     if (password != confirmPassword) {
       _authError.value = AdminAuthLocalizedMessages.passwordMismatch(languageCode)
       return
     }
-    _isBusy.value = true
-    _authError.value = null
-    _infoMessage.value = null
-    viewModelScope.launch {
-      val res =
+    launchAdminAction(
+      action = {
         authRepository.createChurchWithEmailPassword(
           churchName = churchName,
           churchCode = churchCode,
@@ -291,14 +274,9 @@ class AdminAuthViewModel(
           password = password,
           languageCode = languageCode,
         )
-      _isBusy.value = false
-      res
-        .onSuccess { created ->
-          recordUserInteraction()
-          onSuccess(created)
-        }
-        .onFailure { err -> _authError.value = err.message }
-    }
+      },
+      onSuccess = onSuccess,
+    )
   }
 
   fun createChurchWithSignedInGoogleUser(
@@ -308,26 +286,17 @@ class AdminAuthViewModel(
     languageCode: String,
     onSuccess: (Church) -> Unit,
   ) {
-    if (_isBusy.value) return
-    _isBusy.value = true
-    _authError.value = null
-    _infoMessage.value = null
-    viewModelScope.launch {
-      val res =
+    launchAdminAction(
+      action = {
         authRepository.createChurchWithSignedInGoogleUser(
           churchName = churchName,
           churchCode = churchCode,
           churchAddress = churchAddress,
           languageCode = languageCode,
         )
-      _isBusy.value = false
-      res
-        .onSuccess { created ->
-          recordUserInteraction()
-          onSuccess(created)
-        }
-        .onFailure { err -> _authError.value = err.message }
-    }
+      },
+      onSuccess = onSuccess,
+    )
   }
 
   fun updateSecuritySettings(
@@ -339,11 +308,10 @@ class AdminAuthViewModel(
     onSuccess: (Church) -> Unit = {},
     onError: (String) -> Unit = {},
   ) {
-    if (_isBusy.value) return
-    _isBusy.value = true
-    _authError.value = null
-    viewModelScope.launch {
-      val res =
+    launchAdminAction(
+      clearInfoMessage = false,
+      onError = onError,
+      action = {
         authRepository.updateChurchSecuritySettings(
           church = church,
           quickPinEnabled = quickPinEnabled,
@@ -351,18 +319,9 @@ class AdminAuthViewModel(
           autoLockMinutes = autoLockMinutes,
           languageCode = languageCode,
         )
-      _isBusy.value = false
-      res
-        .onSuccess { updated ->
-          recordUserInteraction()
-          onSuccess(updated)
-        }
-        .onFailure { err ->
-          val msg = err.message ?: "Erè pandan aktyalizasyon sekirite."
-          _authError.value = msg
-          onError(msg)
-        }
-    }
+      },
+      onSuccess = onSuccess,
+    )
   }
 
   fun recordUserInteraction() {
@@ -398,12 +357,9 @@ class AdminAuthViewModel(
     viewModelScope.launch {
       val stoppedAt = sessionLockManager.getLastAdminBackgroundTimestamp()
       sessionLockManager.clearAdminBackgroundTimestamp()
-      if (stoppedAt != null) {
-        val elapsedMs = System.currentTimeMillis() - stoppedAt
-        if (elapsedMs >= minutes * 60_000L) {
-          authRepository.lockChurchAdminSession(church.id)
-          _autoLockWarningSeconds.value = null
-        }
+      if (stoppedAt != null && System.currentTimeMillis() - stoppedAt >= minutes * 60_000L) {
+        authRepository.lockChurchAdminSession(church.id)
+        _autoLockWarningSeconds.value = null
       }
     }
   }
@@ -414,12 +370,8 @@ class AdminAuthViewModel(
     church: Church?,
   ) {
     inactivityWatcherJob?.cancel()
-    if (!isAdminSession || !isAdminUnlocked || church == null) {
-      _autoLockWarningSeconds.value = null
-      return
-    }
-    val autoLockMins = church.effectiveAutoLockMinutes
-    if (autoLockMins <= 0) {
+    val autoLockMins = church?.effectiveAutoLockMinutes ?: 0
+    if (!isAdminSession || !isAdminUnlocked || church == null || autoLockMins <= 0) {
       _autoLockWarningSeconds.value = null
       return
     }
@@ -432,8 +384,7 @@ class AdminAuthViewModel(
       viewModelScope.launch {
         while (true) {
           delay(1000L)
-          val elapsed = SystemClock.elapsedRealtime() - lastActivityElapsedMs
-          val remaining = timeoutMs - elapsed
+          val remaining = timeoutMs - (SystemClock.elapsedRealtime() - lastActivityElapsedMs)
           when {
             remaining <= 0L -> {
               _autoLockWarningSeconds.value = null
@@ -443,10 +394,8 @@ class AdminAuthViewModel(
             remaining <= warningWindowMs -> {
               _autoLockWarningSeconds.value = ((remaining + 999L) / 1000L).toInt().coerceAtLeast(1)
             }
-            else -> {
-              if (_autoLockWarningSeconds.value != null) {
-                _autoLockWarningSeconds.value = null
-              }
+            _autoLockWarningSeconds.value != null -> {
+              _autoLockWarningSeconds.value = null
             }
           }
         }
@@ -475,3 +424,30 @@ class AdminAuthViewModel(
     const val WARNING_COUNTDOWN_MS = 30_000L
   }
 }
+
+internal object AdminAuthLocalizedMessages {
+  fun selectChurchFirst(lang: String): String =
+    when (lang) {
+      "fr" -> "Veuillez d'abord sélectionner votre église."
+      "en" -> "Please select your church first."
+      "es" -> "Por favor, seleccione su iglesia primero."
+      else -> "Tanpri chwazi legliz ou a anvan."
+    }
+
+  fun passwordMismatch(lang: String): String =
+    when (lang) {
+      "fr" -> "Les deux mots de passe ne correspondent pas."
+      "en" -> "The passwords do not match."
+      "es" -> "Las contraseñas no coinciden."
+      else -> "De modpas yo pa menm. Tanpri verifye yo."
+    }
+
+  fun passwordResetSent(lang: String, email: String): String =
+    when (lang) {
+      "fr" -> "Un e-mail de réinitialisation a été envoyé à ${email.trim()}."
+      "en" -> "A password reset email has been sent to ${email.trim()}."
+      "es" -> "Se envió un correo de restablecimiento a ${email.trim()}."
+      else -> "Nou voye yon imèl pou reyinisyalize modpas la nan ${email.trim()}."
+    }
+}
+

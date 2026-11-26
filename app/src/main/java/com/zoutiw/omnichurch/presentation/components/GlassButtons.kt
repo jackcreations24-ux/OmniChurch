@@ -58,6 +58,60 @@ import com.zoutiw.omnichurch.ui.theme.OmniBrushes
 import com.zoutiw.omnichurch.ui.theme.PureWhite
 import com.zoutiw.omnichurch.ui.theme.RoyalBlue
 
+private val NeumorphicTextShadow =
+  Shadow(
+    color = Color(0xEE010612),
+    offset = Offset(2f, 4f),
+    blurRadius = 10f,
+  )
+
+private val GlassButtonShape = RoundedCornerShape(18.dp)
+private val DisabledButtonBgBrush =
+  Brush.verticalGradient(listOf(Color(0x55182C4D), Color(0x550C182B)))
+private val GoldButtonBgBrush =
+  Brush.verticalGradient(listOf(BrandGold, BrandOrange, Color(0xFFC86400)))
+private val PrimaryNeonButtonBgBrush =
+  Brush.verticalGradient(listOf(Color(0xFF28B8FF), ElectricBlue, RoyalBlue))
+private val SecondaryButtonBgBrush =
+  Brush.verticalGradient(listOf(Color(0xCC19366B), Color(0xCC0D1F42), Color(0xE6071329)))
+
+private val GoldButtonBorderBrush =
+  Brush.linearGradient(listOf(PureWhite, BrandGold, BrandOrange))
+private val PrimaryNeonButtonBorderBrush =
+  Brush.linearGradient(listOf(PureWhite, BlueNeon, ElectricBlue))
+private val SecondaryButtonBorderBrush =
+  Brush.linearGradient(listOf(GlassWhite.copy(alpha = 0.5f), ElectricBlue.copy(alpha = 0.25f)))
+
+private val PrimaryButtonSpecularBrush =
+  Brush.horizontalGradient(
+    listOf(
+      Color.Transparent,
+      PureWhite.copy(alpha = 0.7f),
+      Color.Transparent,
+    )
+  )
+
+private val SecondaryButtonSpecularBrush =
+  Brush.horizontalGradient(
+    listOf(
+      Color.Transparent,
+      PureWhite.copy(alpha = 0.35f),
+      Color.Transparent,
+    )
+  )
+
+private val NeonIconDefaultBgBrush =
+  Brush.verticalGradient(listOf(Color(0xD920427E), Color(0xE60B1C3D)))
+private val NeonIconBorderBrush =
+  Brush.linearGradient(
+    listOf(
+      PureWhite.copy(alpha = 0.65f),
+      BlueNeon.copy(alpha = 0.40f),
+    )
+  )
+private val NotificationBadgeBgBrush =
+  Brush.verticalGradient(listOf(Color(0xFFFF5E73), ErrorRed))
+
 /**
  * 4a. Neumorphic3DActionButton — 3D Neumorphic action button with a 100% transparent background
  *     and no border ("bg transparan, san bodi"), featuring a glowing 3D icon medallion and extruded text.
@@ -159,12 +213,7 @@ fun Neumorphic3DActionButton(
         style =
           MaterialTheme.typography.titleMedium.copy(
             fontSize = 17.sp,
-            shadow =
-              Shadow(
-                color = Color(0xEE010612),
-                offset = Offset(2f, 4f),
-                blurRadius = 10f,
-              ),
+            shadow = NeumorphicTextShadow,
           ),
         color = PureWhite,
         fontWeight = FontWeight.ExtraBold,
@@ -200,34 +249,40 @@ fun GlassButton(
       label = "btn_scale",
     )
 
-  val shape = RoundedCornerShape(18.dp)
+  val customAccentBgBrush =
+    remember(accentColor) {
+      accentColor?.let {
+        Brush.verticalGradient(
+          listOf(it.copy(alpha = 0.45f), Color(0xCC0D1F42), Color(0xE6071329))
+        )
+      }
+    }
+  val customAccentBorderBrush =
+    remember(accentColor) {
+      accentColor?.let {
+        Brush.linearGradient(listOf(PureWhite.copy(alpha = 0.7f), it))
+      }
+    }
+
   val bgBrush =
     when {
-      !effectiveEnabled ->
-        Brush.verticalGradient(listOf(Color(0x55182C4D), Color(0x550C182B)))
-      isGoldAccent ->
-        Brush.verticalGradient(listOf(BrandGold, BrandOrange, Color(0xFFC86400)))
-      accentColor != null ->
-        Brush.verticalGradient(
-          listOf(accentColor.copy(alpha = 0.45f), Color(0xCC0D1F42), Color(0xE6071329))
-        )
-      isPrimaryNeon ->
-        Brush.verticalGradient(
-          listOf(Color(0xFF28B8FF), ElectricBlue, RoyalBlue)
-        )
-      else ->
-        Brush.verticalGradient(
-          listOf(Color(0xCC19366B), Color(0xCC0D1F42), Color(0xE6071329))
-        )
+      !effectiveEnabled -> DisabledButtonBgBrush
+      isGoldAccent -> GoldButtonBgBrush
+      customAccentBgBrush != null -> customAccentBgBrush
+      isPrimaryNeon -> PrimaryNeonButtonBgBrush
+      else -> SecondaryButtonBgBrush
     }
 
   val borderBrush =
     when {
-      isGoldAccent -> Brush.linearGradient(listOf(PureWhite, BrandGold, BrandOrange))
-      accentColor != null -> Brush.linearGradient(listOf(PureWhite.copy(alpha = 0.7f), accentColor))
-      isPrimaryNeon -> Brush.linearGradient(listOf(PureWhite, BlueNeon, ElectricBlue))
-      else -> Brush.linearGradient(listOf(GlassWhite.copy(alpha = 0.5f), ElectricBlue.copy(alpha = 0.25f)))
+      isGoldAccent -> GoldButtonBorderBrush
+      customAccentBorderBrush != null -> customAccentBorderBrush
+      isPrimaryNeon -> PrimaryNeonButtonBorderBrush
+      else -> SecondaryButtonBorderBrush
     }
+
+  val specularBrush =
+    if (isPrimaryNeon) PrimaryButtonSpecularBrush else SecondaryButtonSpecularBrush
 
   Box(
     modifier =
@@ -235,23 +290,16 @@ fun GlassButton(
         .scale(scale)
         .shadow(
           elevation = if (isPrimaryNeon || isGoldAccent) 14.dp else 8.dp,
-          shape = shape,
+          shape = GlassButtonShape,
           ambientColor = accentColor ?: if (isGoldAccent) BrandOrange else BlueNeon,
           spotColor = accentColor ?: if (isGoldAccent) BrandGold else ElectricBlue,
         )
-        .clip(shape)
+        .clip(GlassButtonShape)
         .background(bgBrush)
-        .border(1.3.dp, borderBrush, shape)
+        .border(1.3.dp, borderBrush, GlassButtonShape)
         .drawBehind {
           drawLine(
-            brush =
-              Brush.horizontalGradient(
-                listOf(
-                  Color.Transparent,
-                  PureWhite.copy(alpha = if (isPrimaryNeon) 0.7f else 0.35f),
-                  Color.Transparent,
-                )
-              ),
+            brush = specularBrush,
             start = Offset(size.width * 0.15f, 1.dp.toPx()),
             end = Offset(size.width * 0.85f, 1.dp.toPx()),
             strokeWidth = 1.5.dp.toPx(),
@@ -342,19 +390,11 @@ fun NeonIconButton(
           .clip(CircleShape)
           .background(
             if (isHighlighted) OmniBrushes.ActiveBlueNeonBrush
-            else
-              Brush.verticalGradient(
-                listOf(Color(0xD920427E), Color(0xE60B1C3D))
-              )
+            else NeonIconDefaultBgBrush
           )
           .border(
             1.3.dp,
-            Brush.linearGradient(
-              listOf(
-                PureWhite.copy(alpha = 0.65f),
-                BlueNeon.copy(alpha = 0.40f),
-              )
-            ),
+            NeonIconBorderBrush,
             CircleShape,
           )
           .clickable(onClick = onClick)
@@ -388,7 +428,7 @@ fun GlassNotificationBadge(count: Int, modifier: Modifier = Modifier) {
         .size(20.dp)
         .shadow(6.dp, CircleShape, ambientColor = ErrorRed)
         .clip(CircleShape)
-        .background(Brush.verticalGradient(listOf(Color(0xFFFF5E73), ErrorRed)))
+        .background(NotificationBadgeBgBrush)
         .border(1.2.dp, PureWhite, CircleShape),
     contentAlignment = Alignment.Center,
   ) {
@@ -400,3 +440,4 @@ fun GlassNotificationBadge(count: Int, modifier: Modifier = Modifier) {
     )
   }
 }
+
