@@ -1,11 +1,13 @@
 package com.zoutiw.omnichurch.data.models
 
+import androidx.compose.runtime.Immutable
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.ServerTimestamp
 import java.security.MessageDigest
 
+@Immutable
 @IgnoreExtraProperties
 data class Member(
   @DocumentId val id: String = "",
@@ -278,6 +280,7 @@ object OmniRoleEvaluator {
   const val DEFAULT_DEACON_DEPARTMENT: String = "Dyakonat / Ministè"
 }
 
+@Immutable
 data class ParsedQrResult(val churchId: String?, val memberId: String)
 
 object OmniQrParser {

@@ -1,11 +1,13 @@
 package com.zoutiw.omnichurch.data.models
 
+import androidx.compose.runtime.Immutable
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.ServerTimestamp
 
+@Immutable
 @IgnoreExtraProperties
 data class ChurchService(
   @DocumentId val id: String = "",
@@ -218,6 +220,7 @@ data class ChurchService(
     }
 }
 
+@Immutable
 @IgnoreExtraProperties
 data class AttendanceRecord(
   @DocumentId val id: String = "",
@@ -259,11 +262,13 @@ data class AttendanceRecord(
     get() = memberCode.trim().ifEmpty { memberId }
 }
 
+@Immutable
 sealed interface ScannerValidationOutcome {
   data object Idle : ScannerValidationOutcome
 
   data object Processing : ScannerValidationOutcome
 
+  @Immutable
   data class RegisteredSuccess(
     val record: AttendanceRecord,
     val member: Member,
@@ -271,6 +276,7 @@ sealed interface ScannerValidationOutcome {
     val formattedTime: String,
   ) : ScannerValidationOutcome
 
+  @Immutable
   data class ValidationError(val errorType: AttendanceErrorType, val details: String? = null) :
     ScannerValidationOutcome
 }
@@ -494,6 +500,7 @@ enum class MemberAttendanceStatus {
     }
 }
 
+@Immutable
 data class MemberAttendanceHistoryItem(
   val id: String = "",
   val dateLabel: String = "",
@@ -503,6 +510,7 @@ data class MemberAttendanceHistoryItem(
   val churchId: String = "",
 )
 
+@Immutable
 data class CrossChurchVisitItem(
   val id: String = "",
   val hostChurchName: String = "",

@@ -1,5 +1,6 @@
 package com.zoutiw.omnichurch.core.ads
 
+import androidx.compose.runtime.Immutable
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
@@ -14,6 +15,7 @@ enum class OmniAdPlacement {
  * Exact `adMob` map schema inside `app_config/developer_engine` in the shared
  * OmniChurch Pro named Firestore database (`ai-studio-applegizplatfmmu-438b9782-c8b8-4863-805f-d40924b9f1d1`).
  */
+@Immutable
 data class RemoteAdMobConfig(
   val enabled: Boolean = false,
   val environment: String = "test",
@@ -275,6 +277,7 @@ data class RemoteMemberVerificationConfig(
 /**
  * Real-time resolved mobile AdMob state exposed to Jetpack Compose UI and ViewModels.
  */
+@Immutable
 data class EffectiveMobileAdMobState(
   val config: RemoteAdMobConfig = RemoteAdMobConfig(),
   val licenses: List<RemoteChurchLicense> = emptyList(),

@@ -226,7 +226,11 @@ fun ServicesScreen(
               )
             }
           } else {
-            items(list, key = { it.id }) { service ->
+            items(
+              items = list,
+              key = { it.id },
+              contentType = { "service_card" },
+            ) { service ->
               val canScanThisService =
                 canScanAttendance ||
                   (service.id in temporaryAuthorizedServiceIds && !service.isServiceEnded())
@@ -336,56 +340,11 @@ fun ServicesScreen(
       onDismissRequest = { showCreateDialog = false },
       churchMembers = churchMembers,
       currentLanguageCode = currentLanguageCode,
-      onSubmit = {
-        sTitle,
-        sCategory,
-        sDate,
-        sStartTime,
-        sEndTime,
-        sTheme,
-        sPassage,
-        sLeader,
-        sPreacher,
-        sReader,
-        sMusicians,
-        sUshers,
-        sIsOpen,
-        sSendReminder,
-        sTol,
-        sImageUrl ->
-        val startFormatted = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(sStartTime)
-        val endFormatted = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(sEndTime)
-        val timeSpan =
-          when {
-            startFormatted.isNotBlank() && endFormatted.isNotBlank() -> "$startFormatted - $endFormatted"
-            startFormatted.isNotBlank() -> startFormatted
-            else -> ""
-          }
-        val naturalDate =
-          com.zoutiw.omnichurch.data.models.formatLocalizedServiceDate(sDate, currentLanguageCode)
-            .ifBlank { formatCreoleDateWithDay(sDate) }
-        val sDateFormatted =
-          if (timeSpan.isNotBlank()) "$naturalDate • $timeSpan" else naturalDate
+      onSubmit = { sTitle, sCategory, sDate, sStartTime, sEndTime, sTheme, sPassage, sLeader, sPreacher, sReader, sMusicians, sUshers, sIsOpen, sSendReminder, sTol, sImageUrl ->
+        val sDateFormatted = formatServiceSheetScheduleLabel(sDate, sStartTime, sEndTime, currentLanguageCode)
         onCreateService(
-          sTitle,
-          sTheme,
-          sDateFormatted,
-          sTol,
-          sIsOpen,
-          true,
-          sCategory,
-          sDate,
-          sStartTime,
-          sEndTime,
-          sTheme,
-          sPassage,
-          sLeader,
-          sPreacher,
-          sReader,
-          sMusicians,
-          sUshers,
-          sSendReminder,
-          sImageUrl,
+          sTitle, sTheme, sDateFormatted, sTol, sIsOpen, true, sCategory, sDate, sStartTime, sEndTime,
+          sTheme, sPassage, sLeader, sPreacher, sReader, sMusicians, sUshers, sSendReminder, sImageUrl,
         )
       },
     )
@@ -397,60 +356,35 @@ fun ServicesScreen(
       churchMembers = churchMembers,
       initialService = targetService,
       currentLanguageCode = currentLanguageCode,
-      onSubmit = {
-        sTitle,
-        sCategory,
-        sDate,
-        sStartTime,
-        sEndTime,
-        sTheme,
-        sPassage,
-        sLeader,
-        sPreacher,
-        sReader,
-        sMusicians,
-        sUshers,
-        sIsOpen,
-        sSendReminder,
-        sTol,
-        sImageUrl ->
-        val startFormatted = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(sStartTime)
-        val endFormatted = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(sEndTime)
-        val timeSpan =
-          when {
-            startFormatted.isNotBlank() && endFormatted.isNotBlank() -> "$startFormatted - $endFormatted"
-            startFormatted.isNotBlank() -> startFormatted
-            else -> ""
-          }
-        val naturalDate =
-          com.zoutiw.omnichurch.data.models.formatLocalizedServiceDate(sDate, currentLanguageCode)
-            .ifBlank { formatCreoleDateWithDay(sDate) }
-        val sDateFormatted =
-          if (timeSpan.isNotBlank()) "$naturalDate • $timeSpan" else naturalDate
+      onSubmit = { sTitle, sCategory, sDate, sStartTime, sEndTime, sTheme, sPassage, sLeader, sPreacher, sReader, sMusicians, sUshers, sIsOpen, sSendReminder, sTol, sImageUrl ->
+        val sDateFormatted = formatServiceSheetScheduleLabel(sDate, sStartTime, sEndTime, currentLanguageCode)
         onUpdateService(
-          targetService,
-          sTitle,
-          sTheme,
-          sDateFormatted,
-          sTol,
-          sIsOpen,
-          sCategory,
-          sDate,
-          sStartTime,
-          sEndTime,
-          sTheme,
-          sPassage,
-          sLeader,
-          sPreacher,
-          sReader,
-          sMusicians,
-          sUshers,
-          sSendReminder,
-          sImageUrl,
+          targetService, sTitle, sTheme, sDateFormatted, sTol, sIsOpen, sCategory, sDate, sStartTime, sEndTime,
+          sTheme, sPassage, sLeader, sPreacher, sReader, sMusicians, sUshers, sSendReminder, sImageUrl,
         )
       },
     )
   }
+}
+
+private fun formatServiceSheetScheduleLabel(
+  sDate: String,
+  sStartTime: String,
+  sEndTime: String,
+  currentLanguageCode: String,
+): String {
+  val startFormatted = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(sStartTime)
+  val endFormatted = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(sEndTime)
+  val timeSpan =
+    when {
+      startFormatted.isNotBlank() && endFormatted.isNotBlank() -> "$startFormatted - $endFormatted"
+      startFormatted.isNotBlank() -> startFormatted
+      else -> ""
+    }
+  val naturalDate =
+    com.zoutiw.omnichurch.data.models.formatLocalizedServiceDate(sDate, currentLanguageCode)
+      .ifBlank { formatCreoleDateWithDay(sDate) }
+  return if (timeSpan.isNotBlank()) "$naturalDate • $timeSpan" else naturalDate
 }
 
 @Composable

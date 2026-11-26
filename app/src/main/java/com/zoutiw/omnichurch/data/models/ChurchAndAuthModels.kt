@@ -1,11 +1,13 @@
 package com.zoutiw.omnichurch.data.models
 
+import androidx.compose.runtime.Immutable
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.ServerTimestamp
 
+@Immutable
 @IgnoreExtraProperties
 data class UserProfile(
   @DocumentId val id: String = "",
@@ -34,6 +36,7 @@ data class UserProfile(
     }
 }
 
+@Immutable
 @IgnoreExtraProperties
 data class Church(
   @DocumentId val id: String = "",
@@ -87,6 +90,7 @@ data class Church(
     get() = quickPinEnabled && adminPasscode.isNotBlank()
 }
 
+@Immutable
 data class OmniSessionState(
   val isInitialized: Boolean = false,
   val activeChurchId: String = "",
@@ -113,6 +117,7 @@ data class OmniSessionState(
     get() = isAuthenticated && activeRole != "admin"
 }
 
+@Immutable
 data class AuthenticatedMemberSession(
   val church: Church,
   val member: Member,
@@ -120,6 +125,7 @@ data class AuthenticatedMemberSession(
 
 class OmniAuthException(override val message: String) : Exception(message)
 
+@Immutable
 data class PublicVerificationResolution(
   val church: Church,
   val member: Member,

@@ -1,11 +1,13 @@
 package com.zoutiw.omnichurch.data.models
 
+import androidx.compose.runtime.Immutable
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.ServerTimestamp
 
+@Immutable
 @IgnoreExtraProperties
 data class Announcement(
   @DocumentId val id: String = "",
@@ -75,6 +77,7 @@ data class Announcement(
     get() = createdAt?.toDate()?.time ?: updatedAt?.toDate()?.time ?: 0L
 }
 
+@Immutable
 @IgnoreExtraProperties
 data class AnnouncementReaction(
   @DocumentId val id: String = "",
@@ -111,12 +114,14 @@ enum class OmniReactionType(val key: String, val labelHt: String) {
   }
 }
 
+@Immutable
 data class TargetReactionSummary(
   val totalCount: Int = 0,
   val topReactions: List<OmniReactionType> = emptyList(),
   val currentUserReaction: OmniReactionType? = null,
 )
 
+@Immutable
 @IgnoreExtraProperties
 data class AnnouncementComment(
   @DocumentId val id: String = "",
@@ -129,6 +134,7 @@ data class AnnouncementComment(
   @ServerTimestamp val createdAt: Timestamp? = null,
 )
 
+@Immutable
 @IgnoreExtraProperties
 data class ChurchNotification(
   @DocumentId val id: String = "",

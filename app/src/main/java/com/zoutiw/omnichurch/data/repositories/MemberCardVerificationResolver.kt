@@ -10,11 +10,17 @@ import com.zoutiw.omnichurch.data.models.PublicVerificationResolution
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 
-internal suspend fun resolveMemberCardVerificationImpl(
-  db: FirebaseFirestore,
-  rawTokenOrCode: String,
-  fallbackChurchId: String? = null,
-): Result<PublicVerificationResolution> {
+/**
+ * Clean Architecture UseCase resolving public and scanner member card verifications
+ * across QR URLs, internal tokens, Matrikil codes, and hardware NFC UIDs.
+ */
+class MemberCardVerificationUseCase(
+  private val db: FirebaseFirestore,
+) {
+  suspend fun resolveMemberCardVerification(
+    rawTokenOrCode: String,
+    fallbackChurchId: String? = null,
+  ): Result<PublicVerificationResolution> {
   val cleanedInput = rawTokenOrCode.trim()
   if (cleanedInput.isEmpty()) {
     return Result.failure(
@@ -174,4 +180,5 @@ internal suspend fun resolveMemberCardVerificationImpl(
       )
     )
   }
+}
 }

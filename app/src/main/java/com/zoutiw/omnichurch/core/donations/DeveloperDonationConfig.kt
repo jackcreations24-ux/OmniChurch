@@ -1,7 +1,9 @@
 package com.zoutiw.omnichurch.core.donations
 
+import androidx.compose.runtime.Immutable
 import java.util.Locale
 
+@Immutable
 data class LocalizedDonationCopy(
   val screenTitle: String = "",
   val screenSubtitle: String = "",
@@ -15,6 +17,7 @@ data class LocalizedDonationCopy(
  * `app_config/developer_engine` -> nested field `donations` in the shared OmniChurch
  * named Firestore database (`ai-studio-applegizplatfmmu-438b9782-c8b8-4863-805f-d40924b9f1d1`).
  */
+@Immutable
 data class DeveloperDonationConfig(
   val enabled: Boolean = true,
   val enableShakeAnimation: Boolean = true,

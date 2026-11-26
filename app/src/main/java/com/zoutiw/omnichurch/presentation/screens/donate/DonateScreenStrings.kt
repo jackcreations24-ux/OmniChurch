@@ -1,7 +1,17 @@
 package com.zoutiw.omnichurch.presentation.screens.donate
 
+import androidx.compose.runtime.Immutable
+import androidx.compose.ui.graphics.Color
+import com.zoutiw.omnichurch.ui.theme.DeepNavy
 import java.util.Locale
 
+// Quiet, borderless flat tonal hierarchy harmonized with OmniChurch DeepNavy (#030B1C)
+internal val DonateFlatCanvas = DeepNavy
+internal val DonateFlatSurface = Color(0xFF0A1730)
+internal val DonateFlatSurfaceElevated = Color(0xFF102245)
+internal val DonateFlatDivider = Color(0x14DCEBFF)
+
+@Immutable
 internal data class DonateScreenCopy(
   val topBarTitle: String,
   val backContentDescription: String,

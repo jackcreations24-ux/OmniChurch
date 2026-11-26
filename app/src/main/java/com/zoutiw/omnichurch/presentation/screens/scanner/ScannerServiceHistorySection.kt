@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -123,18 +124,33 @@ internal fun ScannerServiceHistorySection(
     }
   val visitorRecords = remember(records) { records.filter { it.isCrossChurchVisitor } }
 
-  val activeChurchMembers =
+  val activeChurchMembersWithKeys =
     remember(churchMembers) {
-      churchMembers.filter { member ->
-        !member.id.startsWith("ADMIN-", ignoreCase = true) &&
-          !member.status.equals("inactive", ignoreCase = true) &&
-          !member.status.equals("suspended", ignoreCase = true)
-      }
+      churchMembers
+        .filter { member ->
+          !member.id.startsWith("ADMIN-", ignoreCase = true) &&
+            !member.status.equals("inactive", ignoreCase = true) &&
+            !member.status.equals("suspended", ignoreCase = true)
+        }
+        .sortedBy { it.effectiveFullName.lowercase() }
+        .map { mem ->
+          val keys =
+            listOfNotNull(
+                mem.id,
+                mem.memberId,
+                mem.effectiveMatrikil,
+                mem.userId,
+                mem.barcodeToken,
+              )
+              .map { it.trim().uppercase() }
+              .filter { it.isNotEmpty() }
+          mem to keys
+        }
     }
 
   val absentMembers =
-    remember(regularRecords, activeChurchMembers) {
-      if (activeChurchMembers.isEmpty()) {
+    remember(regularRecords, activeChurchMembersWithKeys) {
+      if (activeChurchMembersWithKeys.isEmpty()) {
         emptyList()
       } else {
         val presentKeys = HashSet<String>(regularRecords.size * 4)
@@ -151,21 +167,10 @@ internal fun ScannerServiceHistorySection(
               if (clean.isNotEmpty()) presentKeys.add(clean)
             }
         }
-        activeChurchMembers
-          .filter { mem ->
-            val memKeys =
-              listOfNotNull(
-                  mem.id,
-                  mem.memberId,
-                  mem.effectiveMatrikil,
-                  mem.userId,
-                  mem.barcodeToken,
-                )
-                .map { it.trim().uppercase() }
-                .filter { it.isNotEmpty() }
-            memKeys.none { it in presentKeys }
+        activeChurchMembersWithKeys
+          .mapNotNull { (mem, memKeys) ->
+            if (memKeys.none { it in presentKeys }) mem else null
           }
-          .sortedBy { it.effectiveFullName.lowercase() }
       }
     }
 
@@ -313,18 +318,20 @@ internal fun ScannerServiceHistorySection(
           val displayed =
             if (isExpanded) regularRecords else regularRecords.take(DEFAULT_VISIBLE_ROWS)
           displayed.forEachIndexed { index, rec ->
-            val isLate =
-              rec.effectiveStatus.equals("late", ignoreCase = true) ||
-                rec.effectiveStatus.equals("an_reta", ignoreCase = true)
-            BorderlessAttendanceRow(
-              fullName = rec.memberName.ifBlank { rec.effectiveMemberCode },
-              photoUrl = rec.memberPhotoUrl,
-              subtitle = buildRecordSubtitle(rec, copy),
-              trailingTop = formatRecordTime(rec, timeFormatter),
-              trailingStatus = if (isLate) copy.statusLate else copy.statusOnTime,
-              statusColor = if (isLate) BrandGold else SuccessGreen,
-              showDivider = index < displayed.lastIndex,
-            )
+            key(rec.id.ifBlank { "${rec.effectiveMemberDbId}_${rec.timestamp}_$index" }) {
+              val isLate =
+                rec.effectiveStatus.equals("late", ignoreCase = true) ||
+                  rec.effectiveStatus.equals("an_reta", ignoreCase = true)
+              BorderlessAttendanceRow(
+                fullName = rec.memberName.ifBlank { rec.effectiveMemberCode },
+                photoUrl = rec.memberPhotoUrl,
+                subtitle = buildRecordSubtitle(rec, copy),
+                trailingTop = formatRecordTime(rec, timeFormatter),
+                trailingStatus = if (isLate) copy.statusLate else copy.statusOnTime,
+                statusColor = if (isLate) BrandGold else SuccessGreen,
+                showDivider = index < displayed.lastIndex,
+              )
+            }
           }
           if (regularRecords.size > DEFAULT_VISIBLE_ROWS) {
             BorderlessExpandToggle(
@@ -342,15 +349,17 @@ internal fun ScannerServiceHistorySection(
         } else {
           val displayed = if (isExpanded) lateRecords else lateRecords.take(DEFAULT_VISIBLE_ROWS)
           displayed.forEachIndexed { index, rec ->
-            BorderlessAttendanceRow(
-              fullName = rec.memberName.ifBlank { rec.effectiveMemberCode },
-              photoUrl = rec.memberPhotoUrl,
-              subtitle = buildRecordSubtitle(rec, copy),
-              trailingTop = formatRecordTime(rec, timeFormatter),
-              trailingStatus = copy.statusLate,
-              statusColor = BrandGold,
-              showDivider = index < displayed.lastIndex,
-            )
+            key(rec.id.ifBlank { "${rec.effectiveMemberDbId}_${rec.timestamp}_$index" }) {
+              BorderlessAttendanceRow(
+                fullName = rec.memberName.ifBlank { rec.effectiveMemberCode },
+                photoUrl = rec.memberPhotoUrl,
+                subtitle = buildRecordSubtitle(rec, copy),
+                trailingTop = formatRecordTime(rec, timeFormatter),
+                trailingStatus = copy.statusLate,
+                statusColor = BrandGold,
+                showDivider = index < displayed.lastIndex,
+              )
+            }
           }
           if (lateRecords.size > DEFAULT_VISIBLE_ROWS) {
             BorderlessExpandToggle(
@@ -371,22 +380,24 @@ internal fun ScannerServiceHistorySection(
           val displayed =
             if (isExpanded) absentMembers else absentMembers.take(DEFAULT_VISIBLE_ROWS)
           displayed.forEachIndexed { index, member ->
-            val subtitle =
-              listOfNotNull(
-                  member.effectiveMatrikil.takeIf { it.isNotBlank() },
-                  member.department.takeIf { it.isNotBlank() },
-                )
-                .joinToString(" • ")
-            BorderlessAttendanceRow(
-              fullName = member.effectiveFullName,
-              photoUrl = member.effectivePhotoUrl,
-              subtitle = subtitle,
-              trailingTop = null,
-              trailingStatus =
-                if (isServiceStillOpen) copy.statusNotCheckedInYet else copy.statusAbsent,
-              statusColor = if (isServiceStillOpen) MutedGlassText else ErrorRed,
-              showDivider = index < displayed.lastIndex,
-            )
+            key(member.id.ifBlank { "${member.effectiveMatrikil}_$index" }) {
+              val subtitle =
+                listOfNotNull(
+                    member.effectiveMatrikil.takeIf { it.isNotBlank() },
+                    member.department.takeIf { it.isNotBlank() },
+                  )
+                  .joinToString(" • ")
+              BorderlessAttendanceRow(
+                fullName = member.effectiveFullName,
+                photoUrl = member.effectivePhotoUrl,
+                subtitle = subtitle,
+                trailingTop = null,
+                trailingStatus =
+                  if (isServiceStillOpen) copy.statusNotCheckedInYet else copy.statusAbsent,
+                statusColor = if (isServiceStillOpen) MutedGlassText else ErrorRed,
+                showDivider = index < displayed.lastIndex,
+              )
+            }
           }
           if (absentMembers.size > DEFAULT_VISIBLE_ROWS) {
             BorderlessExpandToggle(
@@ -405,19 +416,21 @@ internal fun ScannerServiceHistorySection(
           val displayed =
             if (isExpanded) visitorRecords else visitorRecords.take(DEFAULT_VISIBLE_ROWS)
           displayed.forEachIndexed { index, rec ->
-            val originChurch =
-              rec.homeChurchName?.takeIf { it.isNotBlank() }
-                ?: rec.homeChurchId?.takeIf { it.isNotBlank() }
-                ?: rec.effectiveMemberCode
-            BorderlessAttendanceRow(
-              fullName = rec.memberName.ifBlank { rec.effectiveMemberCode },
-              photoUrl = rec.memberPhotoUrl,
-              subtitle = originChurch,
-              trailingTop = formatRecordTime(rec, timeFormatter),
-              trailingStatus = copy.statusVisitor,
-              statusColor = BlueNeon,
-              showDivider = index < displayed.lastIndex,
-            )
+            key(rec.id.ifBlank { "${rec.effectiveMemberDbId}_${rec.timestamp}_$index" }) {
+              val originChurch =
+                rec.homeChurchName?.takeIf { it.isNotBlank() }
+                  ?: rec.homeChurchId?.takeIf { it.isNotBlank() }
+                  ?: rec.effectiveMemberCode
+              BorderlessAttendanceRow(
+                fullName = rec.memberName.ifBlank { rec.effectiveMemberCode },
+                photoUrl = rec.memberPhotoUrl,
+                subtitle = originChurch,
+                trailingTop = formatRecordTime(rec, timeFormatter),
+                trailingStatus = copy.statusVisitor,
+                statusColor = BlueNeon,
+                showDivider = index < displayed.lastIndex,
+              )
+            }
           }
           if (visitorRecords.size > DEFAULT_VISIBLE_ROWS) {
             BorderlessExpandToggle(

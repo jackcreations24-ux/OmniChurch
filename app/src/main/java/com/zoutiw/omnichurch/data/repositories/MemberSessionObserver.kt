@@ -18,13 +18,19 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-internal suspend fun fetchConfirmedMemberFromFirestore(
-  db: FirebaseFirestore,
-  cleanChurchId: String,
-  cleanDocId: String,
-  cleanMatrikil: String,
-  source: Source,
-): Member? {
+/**
+ * Clean Architecture UseCase managing real-time and server-confirmed member session observation
+ * with cache fallback and automatic retry on transient network errors.
+ */
+class MemberSessionObservationUseCase(
+  private val db: FirebaseFirestore,
+) {
+  private suspend fun fetchConfirmedMemberFromFirestore(
+    cleanChurchId: String,
+    cleanDocId: String,
+    cleanMatrikil: String,
+    source: Source,
+  ): Member? {
   if (cleanDocId.isNotEmpty()) {
     val docSnap = db.collection("members").document(cleanDocId).get(source).awaitSafe()
     if (docSnap.exists()) {
@@ -78,54 +84,51 @@ internal suspend fun fetchConfirmedMemberFromFirestore(
     ?: allMembers.firstOrNull { matchesTarget(it, enforceChurch = false) }
 }
 
-internal fun observeSessionMemberResultImpl(
-  db: FirebaseFirestore,
-  churchId: String,
-  memberDocId: String,
-  memberMatrikil: String,
-): Flow<Result<Member?>> = flow {
-  val cleanChurchId = churchId.trim()
-  val cleanDocId = memberDocId.trim()
-  val cleanMatrikil = memberMatrikil.trim()
-  if (cleanDocId.isEmpty() && cleanMatrikil.isEmpty()) {
-    emit(Result.success(null))
-    return@flow
-  }
+  fun observeSessionMemberResult(
+    churchId: String,
+    memberDocId: String,
+    memberMatrikil: String,
+  ): Flow<Result<Member?>> = flow {
+    val cleanChurchId = churchId.trim()
+    val cleanDocId = memberDocId.trim()
+    val cleanMatrikil = memberMatrikil.trim()
+    if (cleanDocId.isEmpty() && cleanMatrikil.isEmpty()) {
+      emit(Result.success(null))
+      return@flow
+    }
 
-  emitAll(
-    channelFlow {
-      var hasServerConfirmation = false
-      var latestConfirmedMember: Member? = null
+    emitAll(
+      channelFlow {
+        var hasServerConfirmation = false
+        var latestConfirmedMember: Member? = null
 
-      val serverWarmupJob = launch {
-        try {
-          val serverMember =
-            fetchConfirmedMemberFromFirestore(
-              db = db,
-              cleanChurchId = cleanChurchId,
-              cleanDocId = cleanDocId,
-              cleanMatrikil = cleanMatrikil,
-              source = Source.SERVER,
-            )
-          hasServerConfirmation = true
-          latestConfirmedMember = serverMember
-          trySend(Result.success(serverMember))
-        } catch (e: CancellationException) {
-          throw e
-        } catch (e: Exception) {
-          val opType = if (cleanDocId.isNotEmpty()) OperationType.GET else OperationType.LIST
-          val path = if (cleanDocId.isNotEmpty()) "members/$cleanDocId" else "members"
-          handleFirestoreError(e, opType, path)
-          val cachedMember =
-            runCatching {
+        val serverWarmupJob = launch {
+          try {
+            val serverMember =
               fetchConfirmedMemberFromFirestore(
-                db = db,
                 cleanChurchId = cleanChurchId,
                 cleanDocId = cleanDocId,
                 cleanMatrikil = cleanMatrikil,
-                source = Source.CACHE,
+                source = Source.SERVER,
               )
-            }.getOrNull()
+            hasServerConfirmation = true
+            latestConfirmedMember = serverMember
+            trySend(Result.success(serverMember))
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            val opType = if (cleanDocId.isNotEmpty()) OperationType.GET else OperationType.LIST
+            val path = if (cleanDocId.isNotEmpty()) "members/$cleanDocId" else "members"
+            handleFirestoreError(e, opType, path)
+            val cachedMember =
+              runCatching {
+                fetchConfirmedMemberFromFirestore(
+                  cleanChurchId = cleanChurchId,
+                  cleanDocId = cleanDocId,
+                  cleanMatrikil = cleanMatrikil,
+                  source = Source.CACHE,
+                )
+              }.getOrNull()
           if (cachedMember != null) {
             latestConfirmedMember = cachedMember
             trySend(Result.success(cachedMember))
@@ -224,4 +227,5 @@ internal fun observeSessionMemberResultImpl(
       }
     }
   )
+}
 }

@@ -38,6 +38,9 @@ class MemberRepository(
   constructor(context: Context) : this(FirestoreProvider.get(context))
 
   internal val auth = Firebase.auth
+  private val mutationUseCase = MemberMutationUseCase(db, auth)
+  private val sessionObservationUseCase = MemberSessionObservationUseCase(db)
+  private val cardVerificationUseCase = MemberCardVerificationUseCase(db)
 
   suspend fun fetchMembersForChurch(churchId: String, churchCode: String? = null): List<Member> {
     val cleanId = churchId.trim()
@@ -279,7 +282,7 @@ class MemberRepository(
     memberDocId: String,
     memberMatrikil: String,
   ): Flow<Result<Member?>> =
-    observeSessionMemberResultImpl(db, churchId, memberDocId, memberMatrikil)
+    sessionObservationUseCase.observeSessionMemberResult(churchId, memberDocId, memberMatrikil)
 
   fun observeSessionMember(
     churchId: String,
@@ -297,7 +300,7 @@ class MemberRepository(
     departmentInput: String,
     ministryRoleInput: String,
   ): Result<Member> =
-    registerMemberWithMatrikilAndPinImpl(
+    mutationUseCase.registerMemberWithMatrikilAndPin(
       church, fullNameInput, customMatrikilInput, pinInput, phoneInput, departmentInput, ministryRoleInput,
     )
 
@@ -306,10 +309,10 @@ class MemberRepository(
     fullName: String,
     department: String,
     ministryRole: String,
-  ): Result<Unit> = updateMemberProfileImpl(member, fullName, department, ministryRole)
+  ): Result<Unit> = mutationUseCase.updateMemberProfile(member, fullName, department, ministryRole)
 
   suspend fun updateMemberProfilePhoto(member: Member, photoDataUrl: String): Result<Unit> =
-    updateMemberProfilePhotoImpl(member, photoDataUrl)
+    mutationUseCase.updateMemberProfilePhoto(member, photoDataUrl)
 
   suspend fun updateMemberByAdmin(
     memberDocId: String,
@@ -319,14 +322,14 @@ class MemberRepository(
     phone: String? = null,
     titlePrefix: String? = null,
   ): Result<Unit> =
-    updateMemberByAdminImpl(memberDocId, fullName, department, ministryRole, phone, titlePrefix)
+    mutationUseCase.updateMemberByAdmin(memberDocId, fullName, department, ministryRole, phone, titlePrefix)
 
   suspend fun bindNfcCardUidToMember(memberDocId: String, nfcCardUid: String): Result<Unit> =
-    bindNfcCardUidToMemberImpl(memberDocId, nfcCardUid)
+    mutationUseCase.bindNfcCardUidToMember(memberDocId, nfcCardUid)
 
   suspend fun resolveMemberCardVerification(
     rawTokenOrCode: String,
     fallbackChurchId: String? = null,
   ): Result<PublicVerificationResolution> =
-    resolveMemberCardVerificationImpl(db, rawTokenOrCode, fallbackChurchId)
+    cardVerificationUseCase.resolveMemberCardVerification(rawTokenOrCode, fallbackChurchId)
 }

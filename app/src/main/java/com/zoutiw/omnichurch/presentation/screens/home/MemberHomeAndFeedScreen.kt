@@ -171,19 +171,26 @@ fun MemberHomeScreen(
   onOpenDonate: () -> Unit = {},
 ) {
   val displayName =
-    member?.effectiveFullName?.takeIf { it.isNotBlank() }
-      ?: userProfile?.displayName?.takeIf { it.isNotBlank() }
-      ?: OmniLocalization.defaultMemberName(currentLanguageCode)
-  val memberPhotoUrl = headerPhotoUrl ?: (member?.effectivePhotoUrl ?: userProfile?.photoUrl)
+    remember(member?.effectiveFullName, userProfile?.displayName, currentLanguageCode) {
+      member?.effectiveFullName?.takeIf { it.isNotBlank() }
+        ?: userProfile?.displayName?.takeIf { it.isNotBlank() }
+        ?: OmniLocalization.defaultMemberName(currentLanguageCode)
+    }
+  val memberPhotoUrl =
+    remember(headerPhotoUrl, member?.effectivePhotoUrl, userProfile?.photoUrl) {
+      headerPhotoUrl ?: (member?.effectivePhotoUrl ?: userProfile?.photoUrl)
+    }
   val isAdmin = isAdminSession || userProfile?.isAdminOrSuperAdmin == true
   val spaceSubtitle =
     remember(currentLanguageCode, isAdmin) {
       OmniLocalization.homeSpaceSubtitle(currentLanguageCode, isAdmin)
     }
   val churchDisplayName =
-    activeChurchName?.takeIf { it.isNotBlank() }
-      ?: member?.churchName?.takeIf { it.isNotBlank() }
-      ?: userProfile?.churchName?.takeIf { it.isNotBlank() }
+    remember(activeChurchName, member?.churchName, userProfile?.churchName) {
+      activeChurchName?.takeIf { it.isNotBlank() }
+        ?: member?.churchName?.takeIf { it.isNotBlank() }
+        ?: userProfile?.churchName?.takeIf { it.isNotBlank() }
+    }
 
   var activeCommentTarget by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
   var showCreateServiceDialog by remember { mutableStateOf(false) }
@@ -348,7 +355,11 @@ fun MemberHomeScreen(
           }
         }
       } else {
-        items(servicesList, key = { "srv_${it.id}" }) { service ->
+        items(
+          items = servicesList,
+          key = { "srv_${it.id}" },
+          contentType = { "service_feed_card" },
+        ) { service ->
           val canDeleteThisService =
             com.zoutiw.omnichurch.data.models.OmniRoleEvaluator.canDeleteService(
               service = service,
@@ -420,45 +431,11 @@ fun MemberHomeScreen(
       onDismissRequest = { showCreateServiceDialog = false },
       churchMembers = churchMembers,
       currentLanguageCode = currentLanguageCode,
-      onSubmit = {
-        sTitle,
-        sCategory,
-        sDate,
-        sStartTime,
-        sEndTime,
-        sTheme,
-        sPassage,
-        sLeader,
-        sPreacher,
-        sReader,
-        sMusicians,
-        sUshers,
-        sIsOpen,
-        sSendReminder,
-        sTol,
-        sImageUrl ->
-        val sDateFormatted =
-          formatHomeServiceDateLabel(sDate, sStartTime, sEndTime, currentLanguageCode)
+      onSubmit = { sTitle, sCategory, sDate, sStartTime, sEndTime, sTheme, sPassage, sLeader, sPreacher, sReader, sMusicians, sUshers, sIsOpen, sSendReminder, sTol, sImageUrl ->
+        val sDateFormatted = formatHomeServiceDateLabel(sDate, sStartTime, sEndTime, currentLanguageCode)
         onCreateService(
-          sTitle,
-          sTheme,
-          sDateFormatted,
-          sTol,
-          sIsOpen,
-          true,
-          sCategory,
-          sDate,
-          sStartTime,
-          sEndTime,
-          sTheme,
-          sPassage,
-          sLeader,
-          sPreacher,
-          sReader,
-          sMusicians,
-          sUshers,
-          sSendReminder,
-          sImageUrl,
+          sTitle, sTheme, sDateFormatted, sTol, sIsOpen, true, sCategory, sDate, sStartTime, sEndTime,
+          sTheme, sPassage, sLeader, sPreacher, sReader, sMusicians, sUshers, sSendReminder, sImageUrl,
         )
       },
     )
@@ -471,45 +448,11 @@ fun MemberHomeScreen(
       churchMembers = churchMembers,
       initialService = targetService,
       currentLanguageCode = currentLanguageCode,
-      onSubmit = {
-        sTitle,
-        sCategory,
-        sDate,
-        sStartTime,
-        sEndTime,
-        sTheme,
-        sPassage,
-        sLeader,
-        sPreacher,
-        sReader,
-        sMusicians,
-        sUshers,
-        sIsOpen,
-        sSendReminder,
-        sTol,
-        sImageUrl ->
-        val sDateFormatted =
-          formatHomeServiceDateLabel(sDate, sStartTime, sEndTime, currentLanguageCode)
+      onSubmit = { sTitle, sCategory, sDate, sStartTime, sEndTime, sTheme, sPassage, sLeader, sPreacher, sReader, sMusicians, sUshers, sIsOpen, sSendReminder, sTol, sImageUrl ->
+        val sDateFormatted = formatHomeServiceDateLabel(sDate, sStartTime, sEndTime, currentLanguageCode)
         onUpdateService(
-          targetService,
-          sTitle,
-          sTheme,
-          sDateFormatted,
-          sTol,
-          sIsOpen,
-          sCategory,
-          sDate,
-          sStartTime,
-          sEndTime,
-          sTheme,
-          sPassage,
-          sLeader,
-          sPreacher,
-          sReader,
-          sMusicians,
-          sUshers,
-          sSendReminder,
-          sImageUrl,
+          targetService, sTitle, sTheme, sDateFormatted, sTol, sIsOpen, sCategory, sDate, sStartTime, sEndTime,
+          sTheme, sPassage, sLeader, sPreacher, sReader, sMusicians, sUshers, sSendReminder, sImageUrl,
         )
       },
     )
