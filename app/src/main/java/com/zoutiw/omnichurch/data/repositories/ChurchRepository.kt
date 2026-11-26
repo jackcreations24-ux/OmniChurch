@@ -354,4 +354,92 @@ class ChurchRepository(
       Result.failure(e)
     }
   }
+
+  /**
+   * Updates or explicitly clears (`""`) the church admin's profile photo (`adminGooglePhoto`)
+   * without allowing Google Auth snapshots to resurrect a cleared photo.
+   */
+  suspend fun updateChurchAdminPhoto(churchId: String, photoDataUrl: String): Result<String> {
+    val cleanChurchId = churchId.trim()
+    if (cleanChurchId.isEmpty()) {
+      return Result.failure(IllegalArgumentException("ID legliz la manke."))
+    }
+    val adminUser =
+      FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "modifye foto pwofil administratè a")
+        .getOrElse { return Result.failure(it) }
+
+    val cleanPhoto = photoDataUrl.trim()
+    val churchRef = db.collection("churches").document(cleanChurchId)
+    return try {
+      val updates =
+        FirestorePayloadSanitizer.sanitizeChurchUpdate(
+          raw =
+            hashMapOf(
+              "adminGooglePhoto" to cleanPhoto,
+              "updatedAt" to FieldValue.serverTimestamp(),
+            ),
+          currentUser = adminUser,
+        )
+      churchRef.update(updates).await()
+
+      // Keep users/{uid}.photoUrl aligned (including explicit "" clear) so Google photo never resurrects it.
+      val uid = adminUser.uid.trim()
+      if (uid.isNotEmpty()) {
+        runCatching {
+          val userRef = db.collection("users").document(uid)
+          val snap = userRef.get().await()
+          if (snap.exists()) {
+            userRef
+              .update(
+                mapOf(
+                  "photoUrl" to cleanPhoto,
+                  "updatedAt" to FieldValue.serverTimestamp(),
+                )
+              )
+              .await()
+          }
+        }
+      }
+      Result.success(cleanPhoto)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      handleFirestoreError(e, OperationType.UPDATE, churchRef.path)
+      Result.failure(e)
+    }
+  }
+
+  /**
+   * Updates or explicitly clears (`""`) the church's official logo (`logoUrl`).
+   */
+  suspend fun updateChurchLogo(churchId: String, logoDataUrl: String): Result<String> {
+    val cleanChurchId = churchId.trim()
+    if (cleanChurchId.isEmpty()) {
+      return Result.failure(IllegalArgumentException("ID legliz la manke."))
+    }
+    val adminUser =
+      FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "modifye logo legliz la")
+        .getOrElse { return Result.failure(it) }
+
+    val cleanLogo = logoDataUrl.trim()
+    val churchRef = db.collection("churches").document(cleanChurchId)
+    return try {
+      val updates =
+        FirestorePayloadSanitizer.sanitizeChurchUpdate(
+          raw =
+            hashMapOf(
+              "logoUrl" to cleanLogo,
+              "updatedAt" to FieldValue.serverTimestamp(),
+            ),
+          currentUser = adminUser,
+        )
+      churchRef.update(updates).await()
+      Result.success(cleanLogo)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      handleFirestoreError(e, OperationType.UPDATE, churchRef.path)
+      Result.failure(e)
+    }
+  }
 }

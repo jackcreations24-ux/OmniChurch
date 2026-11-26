@@ -4,10 +4,10 @@ import android.os.SystemClock
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.FirebaseUser
 import com.zoutiw.omnichurch.core.utilities.SessionLockManager
 import com.zoutiw.omnichurch.data.models.Church
 import com.zoutiw.omnichurch.data.repositories.AuthRepository
-import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -99,7 +99,7 @@ class AdminAuthViewModel(
   ) {
     if (_isBusy.value) return
     val safeChurch = church ?: run {
-      _authError.value = localizedSelectChurchFirst(languageCode)
+      _authError.value = AdminAuthLocalizedMessages.selectChurchFirst(languageCode)
       return
     }
     _isBusy.value = true
@@ -124,7 +124,7 @@ class AdminAuthViewModel(
   ) {
     if (_isBusy.value) return
     if (church == null) {
-      _authError.value = localizedSelectChurchFirst(languageCode)
+      _authError.value = AdminAuthLocalizedMessages.selectChurchFirst(languageCode)
       return
     }
     _isBusy.value = true
@@ -155,13 +155,7 @@ class AdminAuthViewModel(
       _isBusy.value = false
       res
         .onSuccess {
-          _infoMessage.value =
-            when (languageCode) {
-              "fr" -> "Un e-mail de réinitialisation a été envoyé à ${email.trim()}."
-              "en" -> "A password reset email has been sent to ${email.trim()}."
-              "es" -> "Se envió un correo de restablecimiento a ${email.trim()}."
-              else -> "Nou voye yon imèl pou reyinisyalize modpas la nan ${email.trim()}."
-            }
+          _infoMessage.value = AdminAuthLocalizedMessages.passwordResetSent(languageCode, email)
         }
         .onFailure { err -> _authError.value = err.message }
     }
@@ -175,7 +169,7 @@ class AdminAuthViewModel(
   ) {
     if (_isBusy.value) return
     if (church == null) {
-      _authError.value = localizedSelectChurchFirst(languageCode)
+      _authError.value = AdminAuthLocalizedMessages.selectChurchFirst(languageCode)
       return
     }
     _isBusy.value = true
@@ -199,7 +193,7 @@ class AdminAuthViewModel(
     onSuccess: (Church) -> Unit,
   ) {
     if (church == null || !SessionLockManager.hasMatchingChurchCloudOwner(church, firebaseUser.value)) {
-      _authError.value = localizedSelectChurchFirst(languageCode)
+      _authError.value = AdminAuthLocalizedMessages.selectChurchFirst(languageCode)
       return
     }
     viewModelScope.launch {
@@ -244,7 +238,7 @@ class AdminAuthViewModel(
       return
     }
     if (newPassword != confirmPassword) {
-      _authError.value = localizedPasswordMismatch(languageCode)
+      _authError.value = AdminAuthLocalizedMessages.passwordMismatch(languageCode)
       return
     }
     _isBusy.value = true
@@ -281,7 +275,7 @@ class AdminAuthViewModel(
   ) {
     if (_isBusy.value) return
     if (password != confirmPassword) {
-      _authError.value = localizedPasswordMismatch(languageCode)
+      _authError.value = AdminAuthLocalizedMessages.passwordMismatch(languageCode)
       return
     }
     _isBusy.value = true
@@ -370,10 +364,6 @@ class AdminAuthViewModel(
         }
     }
   }
-
-  // ====================================================================
-  // INACTIVITY AUTO-LOCK & LIFECYCLE WATCHERS
-  // ====================================================================
 
   fun recordUserInteraction() {
     lastActivityElapsedMs = SystemClock.elapsedRealtime()
@@ -475,22 +465,6 @@ class AdminAuthViewModel(
       onComplete()
     }
   }
-
-  private fun localizedSelectChurchFirst(lang: String): String =
-    when (lang) {
-      "fr" -> "Veuillez d'abord sélectionner votre église."
-      "en" -> "Please select your church first."
-      "es" -> "Por favor, seleccione su iglesia primero."
-      else -> "Tanpri chwazi legliz ou a anvan."
-    }
-
-  private fun localizedPasswordMismatch(lang: String): String =
-    when (lang) {
-      "fr" -> "Les deux mots de passe ne correspondent pas."
-      "en" -> "The passwords do not match."
-      "es" -> "Las contraseñas no coinciden."
-      else -> "De modpas yo pa menm. Tanpri verifye yo."
-    }
 
   override fun onCleared() {
     super.onCleared()

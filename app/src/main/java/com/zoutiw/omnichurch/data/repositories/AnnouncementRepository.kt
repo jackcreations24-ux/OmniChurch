@@ -173,8 +173,9 @@ class AnnouncementRepository(
     scheduledNotificationDate: String? = null,
     posterUrl: String? = null,
     serviceId: String? = null,
+    requireDeaconOwnership: Boolean = false,
   ): Result<Unit> {
-    val adminUser =
+    val activeUser =
       FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "modifye anons la")
         .getOrElse { return Result.failure(it) }
 
@@ -187,8 +188,16 @@ class AnnouncementRepository(
     if (cleanTitle.isEmpty() || cleanContent.isEmpty()) {
       return Result.failure(IllegalArgumentException("Tit ak mesaj anons la obligatwa."))
     }
-    val cleanPosterUrl = posterUrl?.trim()?.takeIf { it.isNotBlank() && it.length <= 600_000 }
     val docRef = db.collection("announcements").document(cleanId)
+    if (requireDeaconOwnership) {
+      val existing = runCatching { docRef.get().await().toAnnouncement() }.getOrNull()
+      if (existing != null && existing.authorId.trim() != activeUser.uid.trim()) {
+        return Result.failure(
+          IllegalStateException("Ou kapab modifye sèlman anons ou te pibliye tèt ou yo.")
+        )
+      }
+    }
+    val cleanPosterUrl = posterUrl?.trim()?.takeIf { it.isNotBlank() && it.length <= 600_000 }
     val rawPayload = hashMapOf<String, Any?>(
       "title" to cleanTitle,
       "content" to cleanContent,
@@ -204,7 +213,7 @@ class AnnouncementRepository(
       "posterUrl" to cleanPosterUrl,
       "imageUrl" to cleanPosterUrl,
       "serviceId" to serviceId?.trim()?.takeIf { FirestorePayloadSanitizer.isValidDocumentId(it) },
-      "updatedBy" to adminUser.uid,
+      "updatedBy" to activeUser.uid,
       "updatedAt" to FieldValue.serverTimestamp(),
     )
     val payload = FirestorePayloadSanitizer.sanitizeAnnouncementUpdate(rawPayload)
@@ -219,14 +228,27 @@ class AnnouncementRepository(
     }
   }
 
-  suspend fun deleteAnnouncement(announcementId: String): Result<Unit> {
-    FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "efase anons la")
-      .getOrElse { return Result.failure(it) }
+  suspend fun deleteAnnouncement(
+    announcementId: String,
+    requireDeaconOwnership: Boolean = false,
+  ): Result<Unit> {
+    val activeUser =
+      FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "efase anons la")
+        .getOrElse { return Result.failure(it) }
 
     val cleanId = announcementId.trim()
     if (!FirestorePayloadSanitizer.isValidDocumentId(cleanId)) return Result.success(Unit)
+    val docRef = db.collection("announcements").document(cleanId)
+    if (requireDeaconOwnership) {
+      val existing = runCatching { docRef.get().await().toAnnouncement() }.getOrNull()
+      if (existing != null && existing.authorId.trim() != activeUser.uid.trim()) {
+        return Result.failure(
+          IllegalStateException("Ou kapab efase sèlman anons ou te pibliye tèt ou yo.")
+        )
+      }
+    }
     return try {
-      db.collection("announcements").document(cleanId).delete().await()
+      docRef.delete().await()
       Result.success(Unit)
     } catch (e: CancellationException) {
       throw e

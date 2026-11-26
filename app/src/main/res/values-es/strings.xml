@@ -81,12 +81,18 @@
     <string name="qr_gallery_brightness_note">Brillo máximo activado para escaneo rápido</string>
     <string name="qr_gallery_offline_cached">Token QR Verificado • Listo para Escanear</string>
     <string name="qr_gallery_close">Salir de Pantalla Completa</string>
+    <string name="qr_gallery_verify_card">Verificar Tarjeta</string>
 
     <string name="scanner_screen_title">Lector QR Admin</string>
     <string name="scanner_role_admin">Admin</string>
     <string name="scanner_role_usher">Ujier</string>
     <string name="scanner_tab_qr">Escanear QR</string>
     <string name="scanner_tab_manual">Código Manual</string>
+    <string name="scanner_tab_nfc">Tarjeta NFC</string>
+    <string name="scanner_nfc_title">Lector NFC de Asistencia</string>
+    <string name="scanner_nfc_subtitle">Acerque la tarjeta de miembro o pulsera NFC a la parte trasera del teléfono para registrar la asistencia automáticamente.</string>
+    <string name="scanner_nfc_unsupported">Este dispositivo no admite tecnología NFC.</string>
+    <string name="scanner_nfc_listening">Escuchando tarjeta NFC... Acerque la tarjeta ahora.</string>
     <string name="scanner_select_service_label">Elegir Servicio (Activo)</string>
     <string name="scanner_change_service">Cambiar</string>
     <string name="scanner_open_for_attendance">Abierto para Asistencia</string>
@@ -99,6 +105,19 @@
     <string name="scanner_camera_permission_msg">OmniChurch necesita acceso a la cámara para escanear códigos QR.</string>
     <string name="scanner_grant_permission">Permitir Cámara</string>
     <string name="scanner_torch_toggle">Linterna</string>
+    <string name="scanner_purpose_attendance">Asistencia</string>
+    <string name="scanner_purpose_verify">Verificar Tarjeta</string>
+    <string name="scanner_purpose_verify_short">Verificar</string>
+    <string name="scanner_screen_title_compact">Escáner QR</string>
+    <string name="scanner_inline_code_placeholder">Código o Matrícula (ej: OM-0258)</string>
+    <string name="scanner_inline_verify_placeholder">Matrícula, código QR o enlace de verificación</string>
+    <string name="scanner_auto_service_none">No hay servicio activo para asistencia ahora</string>
+    <string name="scanner_open_services_short">Servicios</string>
+    <string name="scanner_verify_banner_title">Modo Verificación Oficial</string>
+    <string name="scanner_verify_banner_subtitle">Verificación oficial • Sin registrar asistencia</string>
+    <string name="scanner_verify_manual_label">Ingresar Matrícula, Código QR o Enlace</string>
+    <string name="scanner_verify_manual_submit">Verificar Tarjeta</string>
+    <string name="scanner_verify_certificate_btn">Verificar Certificado de Tarjeta</string>
 
     <string name="attendance_registered_title">Asistencia Registrada</string>
     <string name="attendance_status_on_time">A Tiempo</string>

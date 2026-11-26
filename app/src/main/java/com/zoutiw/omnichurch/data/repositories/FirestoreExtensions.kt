@@ -3,7 +3,6 @@ package com.zoutiw.omnichurch.data.repositories
 import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.firebase.Timestamp
-import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.zoutiw.omnichurch.data.models.Announcement
 import com.zoutiw.omnichurch.data.models.AnnouncementComment
@@ -14,10 +13,7 @@ import com.zoutiw.omnichurch.data.models.ChurchNotification
 import com.zoutiw.omnichurch.data.models.ChurchService
 import com.zoutiw.omnichurch.data.models.Member
 import com.zoutiw.omnichurch.data.models.UserProfile
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -41,185 +37,6 @@ suspend fun <T> Task<T>.awaitSafe(): T {
  * or omit optional fields.
  */
 object FirestoreDocumentMapper {
-
-  private val isoReadPatterns =
-    listOf(
-      "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-      "yyyy-MM-dd'T'HH:mm:ss'Z'",
-      "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
-      "yyyy-MM-dd'T'HH:mm:ssXXX",
-      "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
-      "yyyy-MM-dd'T'HH:mm:ssZ",
-      "yyyy-MM-dd HH:mm:ss",
-      "yyyy-MM-dd",
-    )
-
-  private fun formatIsoUtc(date: Date): String {
-    val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-    sdf.timeZone = TimeZone.getTimeZone("UTC")
-    return sdf.format(date)
-  }
-
-  private fun parseIsoToDate(raw: String): Date? {
-    val clean = raw.trim()
-    if (clean.isEmpty()) return null
-    clean.toLongOrNull()?.let { num ->
-      val millis = if (num in 1L..9_999_999_999L) num * 1000L else num
-      return Date(millis)
-    }
-    for (pattern in isoReadPatterns) {
-      try {
-        val sdf = SimpleDateFormat(pattern, Locale.US)
-        sdf.timeZone = TimeZone.getTimeZone("UTC")
-        sdf.isLenient = true
-        val parsed = sdf.parse(clean)
-        if (parsed != null) return parsed
-      } catch (_: Exception) {}
-    }
-    return null
-  }
-
-  private fun mapToTimestamp(map: Map<*, *>): Timestamp? {
-    val rawSeconds = map["seconds"] ?: map["_seconds"] ?: return null
-    val seconds = (rawSeconds as? Number)?.toLong() ?: rawSeconds.toString().toLongOrNull() ?: return null
-    val rawNanos = map["nanoseconds"] ?: map["_nanoseconds"] ?: 0
-    val nanos = (rawNanos as? Number)?.toInt() ?: rawNanos.toString().toIntOrNull() ?: 0
-    return Timestamp(seconds, nanos.coerceIn(0, 999_999_999))
-  }
-
-  private fun Map<String, Any?>.optString(key: String, default: String = ""): String {
-    val value = this[key] ?: return default
-    return when (value) {
-      is String -> value.ifEmpty { default }
-      is DocumentReference -> value.id.ifEmpty { default }
-      is Number,
-      is Boolean -> value.toString()
-      else -> default
-    }
-  }
-
-  private fun Map<String, Any?>.optFirstNonBlank(vararg keys: String, default: String = ""): String {
-    for (key in keys) {
-      val candidate = optString(key, "").trim()
-      if (candidate.isNotEmpty()) return candidate
-    }
-    return default
-  }
-
-  private fun Map<String, Any?>.optNullableString(key: String): String? {
-    val value = this[key] ?: return null
-    return when (value) {
-      is String -> value.takeIf { it.isNotEmpty() }
-      is DocumentReference -> value.id.takeIf { it.isNotEmpty() }
-      is Number,
-      is Boolean -> value.toString()
-      else -> null
-    }
-  }
-
-  private fun Map<String, Any?>.optFirstNullableString(vararg keys: String): String? {
-    for (key in keys) {
-      val candidate = optNullableString(key)?.trim()
-      if (!candidate.isNullOrEmpty()) return candidate
-    }
-    return null
-  }
-
-  private fun Map<String, Any?>.optBoolean(key: String, default: Boolean = false): Boolean {
-    val value = this[key] ?: return default
-    return when (value) {
-      is Boolean -> value
-      is Number -> value.toLong() != 0L
-      is String ->
-        when (value.trim().lowercase()) {
-          "true",
-          "1",
-          "yes",
-          "wi" -> true
-          "false",
-          "0",
-          "no",
-          "non" -> false
-          else -> default
-        }
-      else -> default
-    }
-  }
-
-  private fun Map<String, Any?>.optInt(key: String, default: Int = 0): Int {
-    val value = this[key] ?: return default
-    return when (value) {
-      is Number -> value.toInt()
-      is String -> value.trim().toIntOrNull() ?: value.trim().toDoubleOrNull()?.toInt() ?: default
-      else -> default
-    }
-  }
-
-  private fun Map<String, Any?>.optLong(key: String, default: Long = 0L): Long {
-    val value = this[key] ?: return default
-    return when (value) {
-      is Number -> value.toLong()
-      is String -> value.trim().toLongOrNull() ?: value.trim().toDoubleOrNull()?.toLong() ?: default
-      else -> default
-    }
-  }
-
-  private fun Map<String, Any?>.optTimestamp(key: String): Timestamp? {
-    val value = this[key] ?: return null
-    return when (value) {
-      is Timestamp -> value
-      is Date -> Timestamp(value)
-      is Number -> {
-        val raw = value.toLong()
-        if (raw <= 0L) null
-        else {
-          val millis = if (raw < 10_000_000_000L) raw * 1000L else raw
-          Timestamp(Date(millis))
-        }
-      }
-      is Map<*, *> -> mapToTimestamp(value)
-      is String -> parseIsoToDate(value)?.let { Timestamp(it) }
-      else -> null
-    }
-  }
-
-  private fun Map<String, Any?>.optTimestampString(key: String): String {
-    val value = this[key] ?: return ""
-    return when (value) {
-      is String -> value.trim()
-      is Timestamp -> formatIsoUtc(value.toDate())
-      is Date -> formatIsoUtc(value)
-      is Number -> {
-        val raw = value.toLong()
-        if (raw <= 0L) "" else formatIsoUtc(Date(if (raw < 10_000_000_000L) raw * 1000L else raw))
-      }
-      is Map<*, *> -> mapToTimestamp(value)?.toDate()?.let { formatIsoUtc(it) }.orEmpty()
-      else -> ""
-    }
-  }
-
-  private fun Map<String, Any?>.optNullableTimestampString(key: String): String? {
-    return optTimestampString(key).takeIf { it.isNotEmpty() }
-  }
-
-  private fun Map<String, Any?>.optEpochMillisOrNull(key: String): Long? {
-    val value = this[key] ?: return null
-    return when (value) {
-      is Number -> {
-        val raw = value.toLong()
-        if (raw <= 0L) null else if (raw < 10_000_000_000L) raw * 1000L else raw
-      }
-      is Timestamp -> value.toDate().time
-      is Date -> value.time
-      is Map<*, *> -> mapToTimestamp(value)?.toDate()?.time
-      is String -> parseIsoToDate(value)?.time
-      else -> null
-    }
-  }
-
-  private fun Map<String, Any?>.optEpochMillis(key: String, default: Long): Long {
-    return optEpochMillisOrNull(key) ?: default
-  }
 
   fun mapChurch(documentId: String, data: Map<String, Any?>): Church {
     val resolvedId = documentId.trim().ifEmpty { data.optString("id").trim() }
@@ -315,6 +132,7 @@ object FirestoreDocumentMapper {
       qrCode = data.optString("qrCode"),
       department = data.optFirstNonBlank("department", "ministry", "ministryDepartment"),
       role = data.optFirstNonBlank("role", "ministryRole", default = "member"),
+      memberType = data.optFirstNonBlank("memberType", "type", default = "member"),
       status = data.optFirstNonBlank("status", default = "active"),
       barcodeToken = data.optString("barcodeToken"),
       nfcCardUid = nfcUid,
@@ -369,8 +187,9 @@ object FirestoreDocumentMapper {
       endedAt = data.optNullableTimestampString("endedAt"),
       reminderSentAt = data.optNullableTimestampString("reminderSentAt"),
       notes = data.optNullableString("notes"),
-      authorId = data.optString("authorId"),
+      authorId = data.optFirstNonBlank("authorId", "createdBy"),
       authorName = data.optString("authorName"),
+      createdBy = data.optFirstNonBlank("createdBy", "authorId"),
       reactionsCount = data.optLong("reactionsCount", 0L),
       commentsCount = data.optLong("commentsCount", 0L),
       createdAt = data.optTimestamp("createdAt"),

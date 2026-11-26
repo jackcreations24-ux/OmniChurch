@@ -332,13 +332,25 @@ test("Dyak role can create services & announcements; Temporary Akèy can record 
       memberId: "mem_jean_akey",
       createdAt: now,
     });
+    await db.collection("members").doc("mem_paul_dyak").set({
+      userId: DEACON_UID,
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      fullName: "Paul Dyak",
+      memberCode: "OM-DYAK01",
+      department: "Dyakonat",
+      role: "Dyak",
+      status: "active",
+      barcodeToken: "OMNI_TOKEN_PAUL_DYAK",
+      createdAt: now,
+    });
     await db.collection("users").doc(DEACON_UID).set({
       userId: DEACON_UID,
       email: "paul.dyak@omnichurch.org",
       displayName: "Paul Dyak",
       churchId: CHURCH_A,
       churchName: "OmniChurch Pro Tabernacle",
-      role: "member",
+      role: "deacon",
       memberId: "mem_paul_dyak",
       createdAt: now,
     });
@@ -350,16 +362,20 @@ test("Dyak role can create services & announcements; Temporary Akèy can record 
       churchId: CHURCH_A,
       churchName: "OmniChurch Pro Tabernacle",
       title: "Etid Biblik Dyak",
-      dateFormatted: "2026-11-15 • 18:00 - 20:00",
+      dateFormatted: "2026-11-15 • 6:00 PM - 8:00 PM",
       startTimeEpochMillis: 1794765600000,
       lateToleranceMinutes: 15,
       isOpenForAttendance: true,
+      wasOpenedForAttendance: true,
+      isPermanentlyEnded: false,
       isLive: true,
       ushers: "Jean Akèy",
       usherMemberIds: ["mem_jean_akey"],
       usherUserIds: [USHER_UID],
       authorId: DEACON_UID,
-      authorName: "Paul Dyak",
+      authorName: "Dyak Paul Dyak",
+      createdBy: DEACON_UID,
+      updatedBy: DEACON_UID,
       reactionsCount: 0,
       commentsCount: 0,
       createdAt: now,
@@ -370,10 +386,12 @@ test("Dyak role can create services & announcements; Temporary Akèy can record 
       churchId: CHURCH_A,
       title: "Anons Dyak",
       content: "Reyinyon aswè a a 6è.",
-      department: "Dyak",
+      department: "Dyakonat / Ministè",
       isPinned: false,
       authorId: DEACON_UID,
-      authorName: "Paul Dyak",
+      authorName: "Dyak Paul Dyak",
+      createdBy: DEACON_UID,
+      updatedBy: DEACON_UID,
       reactionsCount: 0,
       commentsCount: 0,
       createdAt: now,
@@ -928,6 +946,565 @@ test("16. Churches selector query (list and get on /churches) succeeds for unaut
   await assertSucceeds(adminDb.collection("churches").get());
 });
 
+test("17. Member profile photo update (Kotlin MemberMutationDelegate payload) succeeds for PIN session, Google member with mem_uid_ userId, and legacy member missing churchId", async () => {
+  await seedBaseTenantData();
+  const now = new Date();
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.collection("members").doc("mem_admin_created").set({
+      id: "mem_admin_created",
+      userId: "mem_uid_mem_admin_created",
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      fullName: "Jean Baptiste",
+      memberId: "OM-JB4821",
+      memberCode: "OM-JB4821",
+      department: "Adorasyon",
+      role: "Manm",
+      status: "active",
+      barcodeToken: "OMNICHURCH_CHURCH_A_JB4821",
+      createdAt: now,
+    });
+    await db.collection("members").doc("mem_legacy_no_churchid").set({
+      userId: "mem_uid_legacy",
+      church_id: CHURCH_A,
+      fullName: "Legacy Web Member",
+      memberCode: "OM-LEG01",
+      status: "active",
+      createdAt: now,
+    });
+  });
 
+  const pinDb = testEnv.unauthenticatedContext().firestore();
+  const googleMemberDb = testEnv
+    .authenticatedContext("google_member_uid_77", { email: "jean@gmail.com" })
+    .firestore();
+  const existingProfileMemberDb = testEnv.authenticatedContext(MEMBER_UID).firestore();
 
+  const photoPayload = {
+    avatarUrl: "data:image/jpeg;base64,/9j/AVATAR_TEST_PAYLOAD",
+    photoUrl: "data:image/jpeg;base64,/9j/AVATAR_TEST_PAYLOAD",
+    updatedAt: new Date(Date.now() - 1000),
+  };
 
+  // 1. Matrikil+PIN unauthenticated session updating admin-created member doc
+  await assertSucceeds(
+    pinDb.collection("members").doc("mem_admin_created").update(photoPayload)
+  );
+
+  // 2. Google-signed-in member updating admin-created member doc (userId is mem_uid_...)
+  await assertSucceeds(
+    googleMemberDb.collection("members").doc("mem_admin_created").update(photoPayload)
+  );
+
+  // 2b. Signed-in member WITH users/{uid} profile (role='member') updating admin-created member doc
+  await assertSucceeds(
+    existingProfileMemberDb.collection("members").doc("mem_admin_created").update(photoPayload)
+  );
+
+  // 3. Signed-in member with users/{uid} profile updating member doc lacking churchId (legacy church_id)
+  await assertSucceeds(
+    existingProfileMemberDb.collection("members").doc("mem_legacy_no_churchid").update(photoPayload)
+  );
+
+  // 4. Negative: Member with users/{uid} profile cannot alter role, status, or inject ghost keys via Path 2/3
+  await assertFails(
+    existingProfileMemberDb.collection("members").doc("mem_admin_created").update({
+      ...photoPayload,
+      role: "admin",
+    })
+  );
+  await assertFails(
+    existingProfileMemberDb.collection("members").doc("mem_legacy_no_churchid").update({
+      ...photoPayload,
+      ghostField: "hack",
+    })
+  );
+});
+
+test("18. Deacon users/{uid} self-sync: active non-visitor Deacon allowed; department-only/visitor/inactive/reception denied; admin downgrade denied", async () => {
+  await seedBaseTenantData();
+  const now = new Date();
+  const DEACON_NEW_UID = "deacon_sync_uid_18";
+  const DEPT_ONLY_UID = "dept_only_uid_18";
+  const VISITOR_DEACON_UID = "visitor_deacon_uid_18";
+  const INACTIVE_DEACON_UID = "inactive_deacon_uid_18";
+  const RECEPTION_UID = "reception_only_uid_18";
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.collection("members").doc("mem_active_dyakones").set({
+      userId: "mem_uid_dyakones",
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      fullName: "Sè Nadège",
+      memberCode: "OM-DYK18",
+      department: "Ministè",
+      role: "Dyakonès & Resepsyon",
+      memberType: "member",
+      status: "active",
+      barcodeToken: "OMNI_TOKEN_DYK18",
+      createdAt: now,
+    });
+    await db.collection("members").doc("mem_dept_only").set({
+      userId: DEPT_ONLY_UID,
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      fullName: "Frè Dept Only",
+      memberCode: "OM-DEP18",
+      department: "Dyakonat",
+      role: "Manm",
+      status: "active",
+      barcodeToken: "OMNI_TOKEN_DEP18",
+      createdAt: now,
+    });
+    await db.collection("members").doc("mem_visitor_deacon").set({
+      userId: VISITOR_DEACON_UID,
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      fullName: "Vizitè Dyak",
+      memberCode: "OM-VIS18",
+      department: "Dyakonat",
+      role: "Dyak",
+      memberType: "visitor",
+      status: "active",
+      barcodeToken: "OMNI_TOKEN_VIS18",
+      createdAt: now,
+    });
+    await db.collection("members").doc("mem_inactive_deacon").set({
+      userId: INACTIVE_DEACON_UID,
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      fullName: "Inaktif Dyak",
+      memberCode: "OM-INA18",
+      department: "Dyakonat",
+      role: "Deacon",
+      status: "inactive",
+      barcodeToken: "OMNI_TOKEN_INA18",
+      createdAt: now,
+    });
+    await db.collection("members").doc("mem_reception_only").set({
+      userId: RECEPTION_UID,
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      fullName: "Sè Resepsyon",
+      memberCode: "OM-REC18",
+      department: "Resepsyon",
+      role: "Resepsyon",
+      status: "active",
+      barcodeToken: "OMNI_TOKEN_REC18",
+      createdAt: now,
+    });
+  });
+
+  // 1. Active non-visitor Deacon CAN create users/{uid} with role='deacon'
+  const deaconDb = testEnv.authenticatedContext(DEACON_NEW_UID).firestore();
+  await assertSucceeds(
+    deaconDb.collection("users").doc(DEACON_NEW_UID).set({
+      userId: DEACON_NEW_UID,
+      email: "nadege@omnichurch.org",
+      displayName: "Sè Nadège",
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      memberId: "mem_active_dyakones",
+      role: "deacon",
+      createdAt: now,
+    })
+  );
+
+  // 2. Department="Dyakonat" with role="Manm" CANNOT get role='deacon'
+  const deptOnlyDb = testEnv.authenticatedContext(DEPT_ONLY_UID).firestore();
+  await assertFails(
+    deptOnlyDb.collection("users").doc(DEPT_ONLY_UID).set({
+      userId: DEPT_ONLY_UID,
+      email: "dept@omnichurch.org",
+      displayName: "Frè Dept Only",
+      churchId: CHURCH_A,
+      memberId: "mem_dept_only",
+      role: "deacon",
+      createdAt: now,
+    })
+  );
+
+  // 3. Visitor with role="Dyak" CANNOT get role='deacon'
+  const visitorDb = testEnv.authenticatedContext(VISITOR_DEACON_UID).firestore();
+  await assertFails(
+    visitorDb.collection("users").doc(VISITOR_DEACON_UID).set({
+      userId: VISITOR_DEACON_UID,
+      email: "visitor@omnichurch.org",
+      displayName: "Vizitè Dyak",
+      churchId: CHURCH_A,
+      memberId: "mem_visitor_deacon",
+      role: "deacon",
+      createdAt: now,
+    })
+  );
+
+  // 4. Inactive Deacon CANNOT get role='deacon'
+  const inactiveDb = testEnv.authenticatedContext(INACTIVE_DEACON_UID).firestore();
+  await assertFails(
+    inactiveDb.collection("users").doc(INACTIVE_DEACON_UID).set({
+      userId: INACTIVE_DEACON_UID,
+      email: "inactive@omnichurch.org",
+      displayName: "Inaktif Dyak",
+      churchId: CHURCH_A,
+      memberId: "mem_inactive_deacon",
+      role: "deacon",
+      createdAt: now,
+    })
+  );
+
+  // 5. Pure Reception CANNOT get role='deacon'
+  const receptionDb = testEnv.authenticatedContext(RECEPTION_UID).firestore();
+  await assertFails(
+    receptionDb.collection("users").doc(RECEPTION_UID).set({
+      userId: RECEPTION_UID,
+      email: "rec@omnichurch.org",
+      displayName: "Sè Resepsyon",
+      churchId: CHURCH_A,
+      memberId: "mem_reception_only",
+      role: "deacon",
+      createdAt: now,
+    })
+  );
+
+  // 6. Existing Admin CANNOT be downgraded to 'deacon' via self-sync
+  const adminDb = testEnv.authenticatedContext(ADMIN_UID).firestore();
+  await assertFails(
+    adminDb.collection("users").doc(ADMIN_UID).update({
+      role: "deacon",
+      memberId: "mem_active_dyakones",
+    })
+  );
+});
+
+test("19. Deacon services & announcements RBAC: own active CRUD allowed; deleting other's or ended service, or editing/deleting other's announcement denied", async () => {
+  await seedBaseTenantData();
+  const now = new Date();
+  const DEACON_UID = "deacon_rbac_19";
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.collection("users").doc(DEACON_UID).set({
+      userId: DEACON_UID,
+      email: "deacon19@omnichurch.org",
+      displayName: "Dyak Pierre",
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      role: "deacon",
+      memberId: "mem_deacon_19",
+      createdAt: now,
+    });
+    await db.collection("services").doc("srv_deacon_ended").set({
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      title: "Sèvis Fini",
+      dateFormatted: "lendi 2 novanm 2026 • 7:00 PM",
+      startTimeEpochMillis: 1793664000000,
+      lateToleranceMinutes: 15,
+      isOpenForAttendance: false,
+      isPermanentlyEnded: true,
+      isLive: false,
+      authorId: DEACON_UID,
+      authorName: "Dyak Pierre",
+      createdBy: DEACON_UID,
+      reactionsCount: 0,
+      commentsCount: 0,
+      createdAt: now,
+    });
+    await db.collection("announcements").doc("ann_admin_19").set({
+      churchId: CHURCH_A,
+      title: "Anons Pastè",
+      content: "Mesaj ofisyèl administrasyon an.",
+      department: "Administrasyon",
+      isPinned: true,
+      authorId: ADMIN_UID,
+      authorName: "Jackson Charles",
+      createdBy: ADMIN_UID,
+      reactionsCount: 0,
+      commentsCount: 0,
+      createdAt: now,
+    });
+  });
+
+  const deaconDb = testEnv.authenticatedContext(DEACON_UID).firestore();
+  const memberDb = testEnv.authenticatedContext(MEMBER_UID).firestore();
+
+  // Deacon creates own active service
+  await assertSucceeds(
+    deaconDb.collection("services").doc("srv_deacon_own").set({
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      title: "Lapriyè Mèkredi",
+      dateFormatted: "mèkredi 25 novanm 2026 • 7:00 PM",
+      startTimeEpochMillis: 1795651200000,
+      lateToleranceMinutes: 15,
+      isOpenForAttendance: false,
+      wasOpenedForAttendance: false,
+      isPermanentlyEnded: false,
+      isLive: false,
+      authorId: DEACON_UID,
+      authorName: "Dyak Pierre",
+      createdBy: DEACON_UID,
+      updatedBy: DEACON_UID,
+      reactionsCount: 0,
+      commentsCount: 0,
+      createdAt: now,
+    })
+  );
+
+  // Deacon CANNOT forge Admin authorId on service creation
+  await assertFails(
+    deaconDb.collection("services").doc("srv_deacon_forged").set({
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      title: "Sèvis Fo",
+      dateFormatted: "mèkredi 25 novanm 2026 • 7:00 PM",
+      startTimeEpochMillis: 1795651200000,
+      lateToleranceMinutes: 15,
+      isOpenForAttendance: false,
+      isLive: false,
+      authorId: ADMIN_UID,
+      authorName: "Admin",
+      createdBy: ADMIN_UID,
+      reactionsCount: 0,
+      commentsCount: 0,
+      createdAt: now,
+    })
+  );
+
+  // Deacon CAN delete own active service, CANNOT delete Admin's service or own permanently-ended service
+  await assertSucceeds(deaconDb.collection("services").doc("srv_deacon_own").delete());
+  await assertFails(deaconDb.collection("services").doc("srv_sunday").delete());
+  await assertFails(deaconDb.collection("services").doc("srv_deacon_ended").delete());
+
+  // Deacon announcement CRUD: own allowed, Admin's denied
+  await assertSucceeds(
+    deaconDb.collection("announcements").doc("ann_deacon_own").set({
+      churchId: CHURCH_A,
+      title: "Anons Dyakonat",
+      content: "Reyinyon jèn dyak yo.",
+      department: "Dyakonat / Ministè",
+      isPinned: false,
+      showToastOnLogin: false,
+      isScheduledNotification: false,
+      authorId: DEACON_UID,
+      authorName: "Dyak Pierre",
+      createdBy: DEACON_UID,
+      reactionsCount: 0,
+      commentsCount: 0,
+      createdAt: now,
+    })
+  );
+  await assertSucceeds(
+    deaconDb.collection("announcements").doc("ann_deacon_own").update({
+      showToastOnLogin: true,
+      updatedBy: DEACON_UID,
+      updatedAt: now,
+    })
+  );
+  await assertSucceeds(deaconDb.collection("announcements").doc("ann_deacon_own").delete());
+  await assertFails(
+    deaconDb.collection("announcements").doc("ann_admin_19").update({
+      title: "Tampered by Deacon",
+    })
+  );
+  await assertFails(deaconDb.collection("announcements").doc("ann_admin_19").delete());
+
+  // Regular member CANNOT create services or announcements, CAN increment commentsCount
+  await assertFails(
+    memberDb.collection("announcements").doc("ann_member_blocked").set({
+      churchId: CHURCH_A,
+      title: "Member Post",
+      content: "Not allowed",
+      department: "Adorasyon",
+      isPinned: false,
+      authorId: MEMBER_UID,
+      authorName: "Marie Pierre",
+      reactionsCount: 0,
+      commentsCount: 0,
+      createdAt: now,
+    })
+  );
+  await assertSucceeds(
+    memberDb.collection("announcements").doc("ann_admin_19").update({
+      commentsCount: 1,
+      updatedAt: now,
+    })
+  );
+});
+
+test("20. Deacon notifications restriction & strict PII/church/attendance isolation", async () => {
+  await seedBaseTenantData();
+  const now = new Date();
+  const DEACON_UID = "deacon_isolated_20";
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.collection("members").doc("mem_deacon_20").set({
+      userId: DEACON_UID,
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      fullName: "Dyak Marc",
+      memberCode: "OM-DYK20",
+      department: "Dyakonat",
+      role: "Dyak",
+      status: "active",
+      barcodeToken: "OMNI_TOKEN_DYK20",
+      createdAt: now,
+    });
+    await db.collection("users").doc(DEACON_UID).set({
+      userId: DEACON_UID,
+      email: "marc.dyak@omnichurch.org",
+      displayName: "Dyak Marc",
+      churchId: CHURCH_A,
+      churchName: "OmniChurch Pro Tabernacle",
+      role: "deacon",
+      memberId: "mem_deacon_20",
+      createdAt: now,
+    });
+    await db.collection("attendances").doc("srv_sunday_mem_deacon_20").set({
+      churchId: CHURCH_A,
+      serviceId: "srv_sunday",
+      serviceName: "Sèvis Dimanch",
+      memberDocId: "mem_deacon_20",
+      memberCode: "OM-DYK20",
+      memberName: "Dyak Marc",
+      userId: DEACON_UID,
+      recordedByUid: ADMIN_UID,
+      status: "on_time",
+      checkInMethod: "qr_scan",
+      barcodeToken: "OMNI_TOKEN_DYK20",
+      createdAt: now,
+    });
+  });
+
+  const deaconDb = testEnv.authenticatedContext(DEACON_UID).firestore();
+
+  // Notifications: ONLY 'service' and 'announcement' allowed
+  await assertSucceeds(
+    deaconDb.collection("notifications").doc("notif_deacon_srv").set({
+      userId: "all",
+      churchId: CHURCH_A,
+      title: "Nouvo Sèvis",
+      message: "Sèvis ap kòmanse a 7:00 PM.",
+      type: "service",
+      isRead: false,
+      createdAt: now,
+    })
+  );
+  await assertSucceeds(
+    deaconDb.collection("notifications").doc("notif_deacon_ann").set({
+      userId: "all",
+      churchId: CHURCH_A,
+      title: "Nouvo Anons",
+      message: "Anons dyakonat.",
+      type: "announcement",
+      isRead: false,
+      createdAt: now,
+    })
+  );
+  await assertFails(
+    deaconDb.collection("notifications").doc("notif_deacon_att").set({
+      userId: MEMBER_UID,
+      churchId: CHURCH_A,
+      title: "Fake Attendance",
+      message: "Blocked",
+      type: "attendance",
+      isRead: false,
+      createdAt: now,
+    })
+  );
+  await assertFails(
+    deaconDb.collection("notifications").doc("notif_deacon_sys").set({
+      userId: "all",
+      churchId: CHURCH_A,
+      title: "Fake System Alert",
+      message: "Blocked",
+      type: "system",
+      isRead: false,
+      createdAt: now,
+    })
+  );
+
+  // Strict isolation: CANNOT update church settings, CANNOT edit/delete other members, CANNOT scan attendance, CANNOT list church-wide attendances
+  await assertFails(
+    deaconDb.collection("churches").doc(CHURCH_A).update({
+      name: "Hijacked Church",
+    })
+  );
+  await assertFails(
+    deaconDb.collection("members").doc("mem_marie").update({
+      fullName: "Edited By Deacon",
+    })
+  );
+  await assertFails(deaconDb.collection("members").doc("mem_marie").delete());
+  await assertFails(
+    deaconDb.collection("attendances").doc("srv_sunday_mem_marie").set({
+      churchId: CHURCH_A,
+      serviceId: "srv_sunday",
+      serviceName: "Sèvis Dimanch",
+      memberDocId: "mem_marie",
+      memberCode: "OM-0258743",
+      memberName: "Marie Pierre",
+      userId: MEMBER_UID,
+      recordedByUid: DEACON_UID,
+      status: "on_time",
+      checkInMethod: "qr_scan",
+      barcodeToken: "OMNI_TOKEN_MARIE_998877",
+      createdAt: now,
+    })
+  );
+  await assertFails(
+    deaconDb.collection("attendances").where("churchId", "==", CHURCH_A).get()
+  );
+
+  // CAN query own attendance history
+  await assertSucceeds(
+    deaconDb
+      .collection("attendances")
+      .where("churchId", "==", CHURCH_A)
+      .where("memberDocId", "==", "mem_deacon_20")
+      .get()
+  );
+});
+
+test("21. Admin Google-safe photo & church logo update/explicit clear and Member explicit photo clear succeed", async () => {
+  await seedBaseTenantData();
+  const adminDb = testEnv.authenticatedContext(ADMIN_UID).firestore();
+  const memberDb = testEnv.authenticatedContext(MEMBER_UID).firestore();
+
+  // Admin uploads custom photo & church logo
+  await assertSucceeds(
+    adminDb.collection("churches").doc(CHURCH_A).update({
+      adminGooglePhoto: "data:image/jpeg;base64,/9j/ADMIN_CUSTOM_PHOTO",
+      logoUrl: "data:image/jpeg;base64,/9j/CHURCH_LOGO_PNG",
+      updatedAt: new Date(),
+    })
+  );
+
+  // Admin explicitly clears photo & logo to "" (preventing Google Auth resurrection)
+  await assertSucceeds(
+    adminDb.collection("churches").doc(CHURCH_A).update({
+      adminGooglePhoto: "",
+      logoUrl: "",
+      updatedAt: new Date(),
+    })
+  );
+  await assertSucceeds(
+    adminDb.collection("users").doc(ADMIN_UID).update({
+      photoUrl: "",
+      updatedAt: new Date(),
+    })
+  );
+
+  // Member explicitly clears all 3 photo fields to ""
+  await assertSucceeds(
+    memberDb.collection("members").doc("mem_marie").update({
+      avatarUrl: "",
+      photoUrl: "",
+      googlePhoto: "",
+      updatedAt: new Date(),
+    })
+  );
+});

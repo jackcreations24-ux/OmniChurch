@@ -31,7 +31,7 @@
         },
         "role": {
           "type": "string",
-          "enum": ["member", "usher", "admin", "super_admin"],
+          "enum": ["member", "usher", "deacon", "admin", "super_admin"],
           "description": "Role-based access level within the church."
         },
         "memberId": {
@@ -239,7 +239,11 @@
         },
         "role": {
           "type": "string",
-          "description": "Ministry role (e.g. Mizisyen, Manm, Ouvriye)."
+          "description": "Ministry role (e.g. Mizisyen, Manm, Dyak, Resepsyon)."
+        },
+        "memberType": {
+          "type": "string",
+          "description": "Membership classification (e.g. member, visitor)."
         },
         "status": {
           "type": "string",
@@ -345,6 +349,18 @@
           "type": "string",
           "description": "Creator display name."
         },
+        "createdBy": {
+          "type": "string",
+          "description": "Creator Firebase Auth UID."
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "Last updater Firebase Auth UID."
+        },
+        "isPermanentlyEnded": {
+          "type": "boolean",
+          "description": "True once service attendance has permanently concluded."
+        },
         "reactionsCount": {
           "type": "integer",
           "description": "Total reaction count."
@@ -416,6 +432,14 @@
         "authorName": {
           "type": "string",
           "description": "Author display name."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "Creator Firebase Auth UID."
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "Last updater Firebase Auth UID."
         },
         "reactionsCount": {
           "type": "integer",

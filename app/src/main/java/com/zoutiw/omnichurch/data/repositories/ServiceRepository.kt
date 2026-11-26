@@ -111,9 +111,10 @@ class ServiceRepository(
         .whereEqualTo("isOpenForAttendance", true)
         .snapshots()
         .map { snapshot ->
+          val now = System.currentTimeMillis()
           snapshot.documents
             .mapNotNull { it.toChurchService() }
-            .filter { !it.isPermanentlyEnded }
+            .filter { it.isLiveBadgeActive(now) }
             .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
         }
         .catch { error ->
@@ -124,10 +125,14 @@ class ServiceRepository(
   }
 
   private fun computeStartEpochMillis(date: String, startTime: String): Long {
-    val now = System.currentTimeMillis()
     val parsedMillis = parseDateTimeMillis(date, startTime)
-    if (parsedMillis == null || parsedMillis <= 0L) return now
-    return if (parsedMillis + 3 * 3_600_000L > now) parsedMillis else now
+    if (parsedMillis != null && parsedMillis > 0L) return parsedMillis
+    return System.currentTimeMillis()
+  }
+
+  private fun isBeforeScheduledStart(date: String, startTime: String, now: Long = System.currentTimeMillis()): Boolean {
+    val startMillis = parseDateTimeMillis(date, startTime) ?: return false
+    return now < startMillis
   }
 
   suspend fun createService(
@@ -155,7 +160,7 @@ class ServiceRepository(
     sendReminder24h: Boolean = false,
     imageUrl: String? = null,
   ): Result<String> {
-    val adminUser =
+    val activeUser =
       FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "kreye sèvis la")
         .getOrElse { return Result.failure(it) }
 
@@ -179,18 +184,30 @@ class ServiceRepository(
         )
       )
     }
+    val beforeStart = isBeforeScheduledStart(cleanDate, startTime)
+    if (isOpenForAttendance && beforeStart) {
+      val clockStr = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(startTime).ifBlank { startTime }
+      return Result.failure(
+        IllegalArgumentException(
+          "Prezans pa ka louvri anvan lè sèvis la kòmanse ($clockStr)."
+        )
+      )
+    }
 
-    val uid = adminUser.uid.take(128)
+    val uid = activeUser.uid.take(128)
     val docRef = db.collection("services").document()
     val cleanChurchName = churchName.trim().ifBlank { "OmniChurch Pro" }.take(200)
     val cleanAuthorName = authorName.trim().ifBlank { "Admin" }.take(200)
     val cleanCategory = category.trim().ifBlank { "dimanche_matin" }
     val cleanDateFormatted =
       dateFormatted.trim().ifBlank {
-        if (startTime.isNotBlank()) "$cleanDate • ${startTime.trim()}" else cleanDate
+        val formattedTime = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(startTime)
+        if (formattedTime.isNotBlank()) "$cleanDate • $formattedTime" else cleanDate
       }.take(150)
     val cleanImageUrl = imageUrl?.trim()?.takeIf { it.isNotBlank() && it.length <= 600_000 }
     val startEpochMillis = computeStartEpochMillis(cleanDate, startTime)
+    val effectiveIsOpen = isOpenForAttendance && !beforeStart && !isAlreadyEndedInPast(cleanDate, startTime, endTime)
+    val effectiveIsLive = isLive && effectiveIsOpen
 
     val rawPayload =
       hashMapOf<String, Any?>(
@@ -219,10 +236,10 @@ class ServiceRepository(
         "status" to "active",
         "startTimeEpochMillis" to startEpochMillis,
         "lateToleranceMinutes" to lateToleranceMinutes.coerceIn(0L, 360L),
-        "isOpenForAttendance" to isOpenForAttendance,
-        "wasOpenedForAttendance" to isOpenForAttendance,
+        "isOpenForAttendance" to effectiveIsOpen,
+        "wasOpenedForAttendance" to effectiveIsOpen,
         "isPermanentlyEnded" to false,
-        "isLive" to isLive,
+        "isLive" to effectiveIsLive,
         "authorId" to uid,
         "authorName" to cleanAuthorName,
         "createdBy" to uid,
@@ -266,7 +283,7 @@ class ServiceRepository(
     service: ChurchService,
     isOpen: Boolean,
   ): Result<Unit> {
-    val adminUser =
+    val activeUser =
       FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "chanje estati prezans sèvis la")
         .getOrElse { return Result.failure(it) }
 
@@ -279,10 +296,26 @@ class ServiceRepository(
 
     val docRef = db.collection("services").document(cleanId)
     val liveService = runCatching { docRef.get().await().toChurchService() }.getOrNull() ?: service
-    if (liveService.isPermanentlyLocked()) {
+    val now = System.currentTimeMillis()
+    if (liveService.isPermanentlyLocked(now)) {
       return Result.failure(
         IllegalStateException(
           "Sèvis sa a deja fini nèt — prezans lan pa ka re-ouvri ankò."
+        )
+      )
+    }
+    if (isOpen && liveService.isBeforeStart(now)) {
+      val clockStr = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(liveService.startTime).ifBlank { liveService.startTime }
+      return Result.failure(
+        IllegalStateException(
+          "Prezans pa ka louvri anvan lè sèvis la kòmanse ($clockStr)."
+        )
+      )
+    }
+    if (isOpen && liveService.hasPassedEndTime(now)) {
+      return Result.failure(
+        IllegalStateException(
+          "Sèvis sa a deja depase lè fini li — prezans lan pa ka louvri."
         )
       )
     }
@@ -290,7 +323,8 @@ class ServiceRepository(
     val rawUpdates =
       hashMapOf<String, Any?>(
         "isOpenForAttendance" to isOpen,
-        "updatedBy" to adminUser.uid,
+        "isLive" to isOpen,
+        "updatedBy" to activeUser.uid,
         "updatedAt" to FieldValue.serverTimestamp(),
       )
     if (isOpen) {
@@ -339,7 +373,7 @@ class ServiceRepository(
     notes: String? = null,
     reminderSentAt: String? = null,
   ): Result<Unit> {
-    val adminUser =
+    val activeUser =
       FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "modifye sèvis la")
         .getOrElse { return Result.failure(it) }
 
@@ -396,9 +430,24 @@ class ServiceRepository(
 
     val cleanCategory = category.trim().ifBlank { "dimanche_matin" }
     val cleanDate = date.trim().ifBlank { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+    val beforeStart = isBeforeScheduledStart(cleanDate, startTime)
+    if (isOpenForAttendance && beforeStart) {
+      val clockStr = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(startTime).ifBlank { startTime }
+      return Result.failure(
+        IllegalStateException(
+          "Prezans pa ka louvri anvan lè sèvis la kòmanse ($clockStr)."
+        )
+      )
+    }
+    val endedInPast = isAlreadyEndedInPast(cleanDate, startTime, endTime)
+    val effectiveIsOpen = isOpenForAttendance && !beforeStart && !endedInPast
+    val effectiveIsLive = isLive && effectiveIsOpen
+    val updatedStartEpochMillis = computeStartEpochMillis(cleanDate, startTime)
+
     val cleanDateFormatted =
       dateFormatted.trim().ifBlank {
-        if (startTime.isNotBlank()) "$cleanDate • ${startTime.trim()}" else cleanDate
+        val formattedTime = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(startTime)
+        if (formattedTime.isNotBlank()) "$cleanDate • $formattedTime" else cleanDate
       }.take(150)
 
     val rawPayload =
@@ -410,6 +459,7 @@ class ServiceRepository(
         "date" to cleanDate,
         "startTime" to startTime.trim().takeIf { it.isNotBlank() },
         "endTime" to endTime.trim().takeIf { it.isNotBlank() },
+        "startTimeEpochMillis" to updatedStartEpochMillis,
         "theme" to theme?.trim()?.takeIf { it.isNotBlank() }?.take(500),
         "passage" to passage?.trim()?.takeIf { it.isNotBlank() }?.take(500),
         "leader" to leader?.trim()?.takeIf { it.isNotBlank() },
@@ -420,12 +470,12 @@ class ServiceRepository(
         "category" to cleanCategory,
         "type" to cleanCategory,
         "lateToleranceMinutes" to lateToleranceMinutes.coerceIn(0L, 360L),
-        "isOpenForAttendance" to isOpenForAttendance,
-        "isLive" to isLive,
-        "updatedBy" to adminUser.uid,
+        "isOpenForAttendance" to effectiveIsOpen,
+        "isLive" to effectiveIsLive,
+        "updatedBy" to activeUser.uid,
         "updatedAt" to FieldValue.serverTimestamp(),
       )
-    if (isOpenForAttendance) {
+    if (effectiveIsOpen) {
       rawPayload["wasOpenedForAttendance"] = true
     }
     if (sendReminder24h != null) {
@@ -457,9 +507,10 @@ class ServiceRepository(
     }
   }
 
-  suspend fun deleteService(serviceId: String): Result<Unit> {
-    FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "efase sèvis la")
-      .getOrElse { return Result.failure(it) }
+  suspend fun deleteService(serviceId: String, requireDeaconOwnership: Boolean = false): Result<Unit> {
+    val activeUser =
+      FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "efase sèvis la")
+        .getOrElse { return Result.failure(it) }
 
     val cleanId = serviceId.trim()
     if (!FirestorePayloadSanitizer.isValidDocumentId(cleanId)) {
@@ -469,6 +520,22 @@ class ServiceRepository(
     awaitInFlightCreate(cleanId)
 
     val docRef = db.collection("services").document(cleanId)
+    if (requireDeaconOwnership) {
+      val liveService = runCatching { docRef.get().await().toChurchService() }.getOrNull()
+      if (liveService != null) {
+        if (liveService.isPermanentlyLocked()) {
+          return Result.failure(
+            IllegalStateException("Ou pa ka efase yon sèvis ki deja fini nèt.")
+          )
+        }
+        val uid = activeUser.uid.trim()
+        if (liveService.authorId.trim() != uid && liveService.createdBy.trim() != uid) {
+          return Result.failure(
+            IllegalStateException("Ou kapab efase sèlman sèvis ou te kreye tèt ou yo.")
+          )
+        }
+      }
+    }
     return try {
       docRef.delete().await()
       Result.success(Unit)

@@ -81,12 +81,18 @@
     <string name="qr_gallery_brightness_note">Maximum screen brightness active for fast scanning</string>
     <string name="qr_gallery_offline_cached">Verified QR Token • Ready to Scan</string>
     <string name="qr_gallery_close">Exit Full Screen</string>
+    <string name="qr_gallery_verify_card">Verify Card</string>
 
     <string name="scanner_screen_title">Admin QR Scanner</string>
     <string name="scanner_role_admin">Admin</string>
     <string name="scanner_role_usher">Usher</string>
     <string name="scanner_tab_qr">Scan QR</string>
     <string name="scanner_tab_manual">Enter Member Code</string>
+    <string name="scanner_tab_nfc">NFC Card</string>
+    <string name="scanner_nfc_title">NFC Card Attendance Reader</string>
+    <string name="scanner_nfc_subtitle">Hold the member card or NFC wristband against the back of the phone to record attendance automatically.</string>
+    <string name="scanner_nfc_unsupported">This device does not support NFC.</string>
+    <string name="scanner_nfc_listening">Listening for NFC card... Hold card near phone.</string>
     <string name="scanner_select_service_label">Select Active Service</string>
     <string name="scanner_change_service">Change</string>
     <string name="scanner_open_for_attendance">Open for Attendance</string>
@@ -99,6 +105,19 @@
     <string name="scanner_camera_permission_msg">OmniChurch requires camera access to scan member QR codes in real time.</string>
     <string name="scanner_grant_permission">Grant Camera Access</string>
     <string name="scanner_torch_toggle">Flashlight</string>
+    <string name="scanner_purpose_attendance">Attendance</string>
+    <string name="scanner_purpose_verify">Verify Card</string>
+    <string name="scanner_purpose_verify_short">Verify</string>
+    <string name="scanner_screen_title_compact">QR Scanner</string>
+    <string name="scanner_inline_code_placeholder">Member code or ID (e.g. OM-0258)</string>
+    <string name="scanner_inline_verify_placeholder">Member ID, QR code, or verification link</string>
+    <string name="scanner_auto_service_none">No active service open for attendance right now</string>
+    <string name="scanner_open_services_short">Services</string>
+    <string name="scanner_verify_banner_title">Official Verification Mode</string>
+    <string name="scanner_verify_banner_subtitle">Official verification • Without recording attendance</string>
+    <string name="scanner_verify_manual_label">Enter Member ID, QR Code, or Link</string>
+    <string name="scanner_verify_manual_submit">Verify Member Card</string>
+    <string name="scanner_verify_certificate_btn">Verify Card Certificate</string>
 
     <string name="attendance_registered_title">Attendance Recorded</string>
     <string name="attendance_status_on_time">On Time</string>

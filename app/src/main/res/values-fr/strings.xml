@@ -81,12 +81,18 @@
     <string name="qr_gallery_brightness_note">Luminosité maximale activée pour une lecture rapide</string>
     <string name="qr_gallery_offline_cached">Jeton QR Vérifié • Prêt à Scanner</string>
     <string name="qr_gallery_close">Fermer le Plein Écran</string>
+    <string name="qr_gallery_verify_card">Vérifier Carte</string>
 
     <string name="scanner_screen_title">Lecteur QR Admin</string>
     <string name="scanner_role_admin">Admin</string>
     <string name="scanner_role_usher">Huissier</string>
     <string name="scanner_tab_qr">Scanner QR</string>
     <string name="scanner_tab_manual">Code Membre</string>
+    <string name="scanner_tab_nfc">Carte NFC</string>
+    <string name="scanner_nfc_title">Lecteur NFC de Présence</string>
+    <string name="scanner_nfc_subtitle">Approchez la carte membre ou le bracelet NFC au dos du téléphone pour enregistrer la présence automatiquement.</string>
+    <string name="scanner_nfc_unsupported">Cet appareil ne prend pas en charge la technologie NFC.</string>
+    <string name="scanner_nfc_listening">Écoute NFC active... Approchez la carte maintenant.</string>
     <string name="scanner_select_service_label">Choisir Culte (Actif)</string>
     <string name="scanner_change_service">Changer</string>
     <string name="scanner_open_for_attendance">Ouvert aux Présences</string>
@@ -99,6 +105,19 @@
     <string name="scanner_camera_permission_msg">OmniChurch a besoin de la caméra pour scanner les codes QR des membres.</string>
     <string name="scanner_grant_permission">Autoriser la Caméra</string>
     <string name="scanner_torch_toggle">Flash</string>
+    <string name="scanner_purpose_attendance">Présence</string>
+    <string name="scanner_purpose_verify">Vérifier Carte</string>
+    <string name="scanner_purpose_verify_short">Vérifier</string>
+    <string name="scanner_screen_title_compact">Lecteur QR</string>
+    <string name="scanner_inline_code_placeholder">Code membre ou Matricule (ex: OM-0258)</string>
+    <string name="scanner_inline_verify_placeholder">Matricule, code QR ou lien de vérification</string>
+    <string name="scanner_auto_service_none">Aucun service actif pour les présences</string>
+    <string name="scanner_open_services_short">Cultes</string>
+    <string name="scanner_verify_banner_title">Mode Vérification Officielle</string>
+    <string name="scanner_verify_banner_subtitle">Vérification officielle • Sans enregistrer la présence</string>
+    <string name="scanner_verify_manual_label">Entrer Matricule, Code QR ou Lien</string>
+    <string name="scanner_verify_manual_submit">Vérifier la Carte</string>
+    <string name="scanner_verify_certificate_btn">Vérifier le Certificat de la Carte</string>
 
     <string name="attendance_registered_title">Présence Enregistrée</string>
     <string name="attendance_status_on_time">À l\'Heure</string>

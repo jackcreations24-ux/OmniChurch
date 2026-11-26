@@ -1,6 +1,6 @@
 package com.zoutiw.omnichurch
 
-import com.zoutiw.omnichurch.core.security.CryptoSecurity
+import com.zoutiw.omnichurch.core.utilities.CryptoSecurity
 import com.zoutiw.omnichurch.data.models.OmniAuthEvaluator
 import com.zoutiw.omnichurch.data.models.OmniQrParser
 import com.zoutiw.omnichurch.data.models.UserProfile

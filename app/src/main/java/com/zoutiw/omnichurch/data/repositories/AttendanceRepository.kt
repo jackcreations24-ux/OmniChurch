@@ -82,8 +82,23 @@ class AttendanceRepository(
         )
       }
 
-    if (liveService == null || !liveService.isOpenForAttendance || liveService.isPermanentlyEnded) {
+    val nowCheck = System.currentTimeMillis()
+    if (liveService == null || !liveService.isOpenForAttendance || liveService.isPermanentlyLocked(nowCheck)) {
       return ScannerValidationOutcome.ValidationError(AttendanceErrorType.SERVICE_CLOSED)
+    }
+    if (liveService.isBeforeStart(nowCheck)) {
+      val startLabel = com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(liveService.startTime)
+      return ScannerValidationOutcome.ValidationError(
+        AttendanceErrorType.SERVICE_CLOSED,
+        if (startLabel.isNotBlank()) "Prezans la poko louvri. Sèvis la ap kòmanse a $startLabel."
+        else "Prezans la poko louvri anvan lè sèvis la kòmanse.",
+      )
+    }
+    if (liveService.hasPassedEndTime(nowCheck)) {
+      return ScannerValidationOutcome.ValidationError(
+        AttendanceErrorType.SERVICE_CLOSED,
+        "Sèvis sa a deja fini — prezans lan fèmen.",
+      )
     }
     if (!liveService.churchId.trim().equals(staffChurchId, ignoreCase = true)) {
       return ScannerValidationOutcome.ValidationError(AttendanceErrorType.WRONG_CHURCH)
@@ -99,10 +114,7 @@ class AttendanceRepository(
     val targetMemberIdentifier = parsedQr.memberId
 
     if (targetChurchId != null && !targetChurchId.equals(staffChurchId, true)) {
-      return ScannerValidationOutcome.ValidationError(
-        AttendanceErrorType.WRONG_CHURCH,
-        "SEKIRITE: Kòd sa a fè pati yon lòt legliz!",
-      )
+      return ScannerValidationOutcome.ValidationError(AttendanceErrorType.WRONG_CHURCH)
     }
 
     val targetUpper = targetMemberIdentifier.uppercase()
@@ -145,7 +157,7 @@ class AttendanceRepository(
     if (matchedMember.effectiveStatus.lowercase(Locale.US) in setOf("suspended", "inactive")) {
       return ScannerValidationOutcome.ValidationError(
         AttendanceErrorType.UNAUTHORIZED,
-        "Manm sa a pa aktif nan rejis legliz la (${matchedMember.effectiveStatus}).",
+        "INACTIVE_MEMBER:${matchedMember.effectiveStatus}",
       )
     }
 
@@ -186,10 +198,11 @@ class AttendanceRepository(
     }
 
     val nowMillis = System.currentTimeMillis()
+    val effectiveStartMillis = liveService.scheduledStartMillis() ?: liveService.startTimeEpochMillis
     val deadlineMillis =
-      liveService.startTimeEpochMillis + (liveService.lateToleranceMinutes * 60_000L)
+      effectiveStartMillis + (liveService.lateToleranceMinutes * 60_000L)
     val computedStatus =
-      if (liveService.startTimeEpochMillis <= 0L || nowMillis <= deadlineMillis) {
+      if (effectiveStartMillis <= 0L || nowMillis <= deadlineMillis) {
         "on_time"
       } else {
         "late"
@@ -251,7 +264,10 @@ class AttendanceRepository(
           .await()
       }
 
-      val formattedTime = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(nowMillis))
+      val formattedTime =
+        com.zoutiw.omnichurch.data.models.formatServiceClockAmPm(
+          SimpleDateFormat("HH:mm", Locale.US).format(Date(nowMillis))
+        )
       val record =
         AttendanceRecord(
           id = attendanceDocId,
