@@ -178,4 +178,80 @@ class DonateMultilingualAndSchemaTest {
       com.zoutiw.omnichurch.presentation.components.RemoteShareAppConfig.sanitizeShareUrl("javascript:alert(1)")
     )
   }
+
+  @Test
+  fun `ChurchLocationDetector maps 4-language country names, detects timezone city and country, and prevents country duplication`() {
+    val detector = com.zoutiw.omnichurch.core.utilities.ChurchLocationDetector
+
+    // 1. 4-language country names
+    assertEquals("Ayiti", detector.getCountryNameFromCode("HT", "ht"))
+    assertEquals("Haïti", detector.getCountryNameFromCode("HT", "fr"))
+    assertEquals("Haiti", detector.getCountryNameFromCode("HT", "en"))
+    assertEquals("Haití", detector.getCountryNameFromCode("HT", "es"))
+
+    assertEquals("Repiblik Dominiken", detector.getCountryNameFromCode("DO", "ht"))
+    assertEquals("République Dominicaine", detector.getCountryNameFromCode("DO", "fr"))
+    assertEquals("Dominican Republic", detector.getCountryNameFromCode("DO", "en"))
+    assertEquals("República Dominicana", detector.getCountryNameFromCode("DO", "es"))
+
+    assertEquals("Etazini (USA)", detector.getCountryNameFromCode("US", "ht"))
+    assertEquals("États-Unis (USA)", detector.getCountryNameFromCode("US", "fr"))
+    assertEquals("United States (USA)", detector.getCountryNameFromCode("US", "en"))
+    assertEquals("Estados Unidos (EE.UU.)", detector.getCountryNameFromCode("US", "es"))
+
+    // 2. Offline timezone detection
+    val haitiSync =
+      detector.getDetectedChurchCountrySync(
+        language = "ht",
+        timezoneIdOverride = "America/Port-au-Prince",
+      )
+    assertEquals("HT", haitiSync.countryCode)
+    assertEquals("Ayiti", haitiSync.countryName)
+    assertEquals("Pòtoprens", haitiSync.cityHint)
+    assertEquals("Pòtoprens, Ayiti", haitiSync.formattedDefaultCity)
+
+    val drSync =
+      detector.getDetectedChurchCountrySync(
+        language = "es",
+        timezoneIdOverride = "America/Santo_Domingo",
+      )
+    assertEquals("DO", drSync.countryCode)
+    assertEquals("República Dominicana", drSync.countryName)
+    assertEquals("Santo Domingo", drSync.cityHint)
+    assertEquals("Santo Domingo, República Dominicana", drSync.formattedDefaultCity)
+
+    // 3. Smart non-duplicating formatter
+    assertEquals(
+      "Delmas 33, Ayiti",
+      detector.formatChurchLocationWithDetectedCountry(
+        rawCity = "Delmas 33",
+        language = "ht",
+        explicitCountry = "HT",
+      ),
+    )
+    assertEquals(
+      "Pòtoprens, Ayiti",
+      detector.formatChurchLocationWithDetectedCountry(
+        rawCity = "Pòtoprens, Ayiti",
+        language = "ht",
+        explicitCountry = "HT",
+      ),
+    )
+    assertEquals(
+      "Port-au-Prince, Haïti",
+      detector.formatChurchLocationWithDetectedCountry(
+        rawCity = "Port-au-Prince, Haïti",
+        language = "ht",
+        explicitCountry = "HT",
+      ),
+    )
+    assertEquals(
+      "Santiago, Repiblik Dominiken",
+      detector.formatChurchLocationWithDetectedCountry(
+        rawCity = "Santiago, Repiblik Dominiken",
+        language = "es",
+        explicitCountry = "DO",
+      ),
+    )
+  }
 }

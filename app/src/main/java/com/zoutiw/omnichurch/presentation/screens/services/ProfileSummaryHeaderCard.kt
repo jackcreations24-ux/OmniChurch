@@ -23,7 +23,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,6 +34,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,19 +47,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.zoutiw.omnichurch.core.utilities.ChurchLocationDetector
 import com.zoutiw.omnichurch.core.utilities.OmniLocalization
 import com.zoutiw.omnichurch.core.utilities.ProfileStringValues
 import com.zoutiw.omnichurch.data.models.Church
 import com.zoutiw.omnichurch.data.models.Member
 import com.zoutiw.omnichurch.data.models.UserProfile
 import com.zoutiw.omnichurch.presentation.components.GlassButton
+import com.zoutiw.omnichurch.presentation.components.GlassInputField
 import com.zoutiw.omnichurch.presentation.components.MemberAvatar3D
 import com.zoutiw.omnichurch.presentation.components.PremiumGlassCard
 import com.zoutiw.omnichurch.presentation.components.shareOmniChurchGeneralApp
+import com.zoutiw.omnichurch.ui.theme.BlueNeon
 import com.zoutiw.omnichurch.ui.theme.BrandGold
 import com.zoutiw.omnichurch.ui.theme.ElectricBlue
 import com.zoutiw.omnichurch.ui.theme.GlassWhite
 import com.zoutiw.omnichurch.ui.theme.PureWhite
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun ProfileSummaryHeaderCard(
@@ -72,7 +85,28 @@ internal fun ProfileSummaryHeaderCard(
   onOpenNotifications: (() -> Unit)?,
   onPickProfilePhoto: () -> Unit,
   onPickChurchLogo: () -> Unit,
+  onUpdateChurchLocation: ((String) -> Unit)? = null,
 ) {
+  val scope = rememberCoroutineScope()
+  val formattedChurchLocation =
+    remember(activeChurch?.city, activeChurch?.address, activeChurch?.country, currentLanguageCode) {
+      if (activeChurch != null) {
+        ChurchLocationDetector.formatChurchModelLocation(
+          city = activeChurch.city,
+          address = activeChurch.address,
+          language = currentLanguageCode,
+          explicitCountry = activeChurch.country,
+          context = context,
+        )
+      } else {
+        ChurchLocationDetector.formatChurchLocationWithDetectedCountry(
+          rawCity = null,
+          language = currentLanguageCode,
+          context = context,
+        )
+      }
+    }
+
   PremiumGlassCard(
     cornerRadius = 22.dp,
     isHighlighted = true,
@@ -166,6 +200,27 @@ internal fun ProfileSummaryHeaderCard(
             )
           }
         }
+        if (formattedChurchLocation.isNotBlank()) {
+          Spacer(modifier = Modifier.height(4.dp))
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.testTag("profile_church_location_badge"),
+          ) {
+            Icon(
+              imageVector = Icons.Default.LocationOn,
+              contentDescription = null,
+              tint = BlueNeon,
+              modifier = Modifier.size(13.dp),
+            )
+            Text(
+              text = formattedChurchLocation,
+              style = MaterialTheme.typography.labelSmall,
+              color = GlassWhite.copy(alpha = 0.90f),
+              fontWeight = FontWeight.Medium,
+            )
+          }
+        }
       }
     }
 
@@ -245,6 +300,168 @@ internal fun ProfileSummaryHeaderCard(
           contentDescription = churchLogoTitle,
           tint = ElectricBlue,
           modifier = Modifier.size(18.dp),
+        )
+      }
+    }
+
+    if (isAdmin && activeChurch != null && onUpdateChurchLocation != null) {
+      val lang = ChurchLocationDetector.normalizeLanguage(currentLanguageCode)
+      val cityFieldLabel =
+        when (lang) {
+          "fr" -> "Ville / Département / Pays"
+          "en" -> "City / State / Country"
+          "es" -> "Ciudad / Provincia / País"
+          else -> "Vil / Depatman / Peyi"
+        }
+      val detectChipLabel =
+        when (lang) {
+          "fr" -> "Détecter Pays"
+          "en" -> "Auto-Detect"
+          "es" -> "Detectar País"
+          else -> "Detekte Peyi"
+        }
+      val saveLocationLabel =
+        when (lang) {
+          "fr" -> "Enregistrer"
+          "en" -> "Save"
+          "es" -> "Guardar"
+          else -> "Anrejistre"
+        }
+
+      var cityInput by
+        remember(activeChurch.id, activeChurch.city, activeChurch.address, currentLanguageCode) {
+          mutableStateOf(
+            ChurchLocationDetector.formatChurchModelLocation(
+              city = activeChurch.city,
+              address = activeChurch.address,
+              language = currentLanguageCode,
+              explicitCountry = activeChurch.country,
+              context = context,
+            )
+          )
+        }
+      var isDetectingLocation by remember { mutableStateOf(false) }
+
+      LaunchedEffect(activeChurch.id, currentLanguageCode) {
+        ChurchLocationDetector.detectGeoCountryAsync(context)
+        val rawStored =
+          ChurchLocationDetector.resolveRawChurchCityOrAddress(
+            activeChurch.city,
+            activeChurch.address,
+          )
+        if (rawStored.isBlank()) {
+          cityInput =
+            ChurchLocationDetector.formatChurchLocationWithDetectedCountry(
+              rawCity = null,
+              language = currentLanguageCode,
+              context = context,
+            )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(12.dp))
+      Column(
+        modifier =
+          Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0x440A1A38))
+            .border(1.dp, GlassWhite.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Text(
+            text = cityFieldLabel,
+            style = MaterialTheme.typography.labelLarge,
+            color = PureWhite,
+            fontWeight = FontWeight.Bold,
+          )
+          Row(
+            modifier =
+              Modifier.clip(RoundedCornerShape(50))
+                .background(ElectricBlue.copy(alpha = 0.22f))
+                .border(1.dp, BlueNeon.copy(alpha = 0.50f), RoundedCornerShape(50))
+                .clickable(enabled = !isDetectingLocation) {
+                  isDetectingLocation = true
+                  scope.launch {
+                    val detected =
+                      ChurchLocationDetector.detectChurchLocationWithGpsOrNetworkAsync(
+                        context = context,
+                        language = currentLanguageCode,
+                      )
+                    val formatted =
+                      if (detected.cityHint.isNotBlank()) {
+                        detected.formattedDefaultCity
+                      } else {
+                        ChurchLocationDetector.formatChurchLocationWithDetectedCountry(
+                          rawCity = cityInput,
+                          language = currentLanguageCode,
+                          explicitCountry = detected.countryName,
+                          context = context,
+                        )
+                      }
+                    cityInput = formatted
+                    isDetectingLocation = false
+                    onUpdateChurchLocation(formatted)
+                  }
+                }
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+                .testTag("admin_settings_detect_country_chip"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+          ) {
+            if (isDetectingLocation) {
+              CircularProgressIndicator(
+                color = BlueNeon,
+                strokeWidth = 1.5.dp,
+                modifier = Modifier.size(12.dp),
+              )
+            } else {
+              Icon(
+                imageVector = Icons.Default.MyLocation,
+                contentDescription = detectChipLabel,
+                tint = BlueNeon,
+                modifier = Modifier.size(13.dp),
+              )
+            }
+            Text(
+              text = detectChipLabel,
+              style = MaterialTheme.typography.labelSmall,
+              color = PureWhite,
+              fontWeight = FontWeight.Bold,
+            )
+          }
+        }
+
+        GlassInputField(
+          value = cityInput,
+          onValueChange = { cityInput = it },
+          label = cityFieldLabel,
+          placeholder = formattedChurchLocation,
+          leadingIcon = Icons.Default.LocationOn,
+          testTag = "admin_settings_church_city_input",
+        )
+
+        GlassButton(
+          text = saveLocationLabel,
+          icon = Icons.Default.Check,
+          isPrimaryNeon = false,
+          onClick = {
+            val formatted =
+              ChurchLocationDetector.formatChurchLocationWithDetectedCountry(
+                rawCity = cityInput,
+                language = currentLanguageCode,
+                context = context,
+              )
+            cityInput = formatted
+            onUpdateChurchLocation(formatted)
+          },
+          modifier = Modifier.fillMaxWidth(),
+          testTag = "admin_settings_save_church_city_btn",
         )
       }
     }

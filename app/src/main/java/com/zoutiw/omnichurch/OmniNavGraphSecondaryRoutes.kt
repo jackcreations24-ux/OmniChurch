@@ -241,6 +241,26 @@ internal fun NavGraphBuilder.registerSecondaryWorkspaceRoutes(ctx: WorkspaceNavC
             )
           }
         } else null,
+      onUpdateChurchLocation =
+        if (ctx.isAdminSession && activeChurch != null) {
+          { rawCity ->
+            ctx.viewModel.updateChurchLocation(
+              rawCity = rawCity,
+              languageCode = ctx.currentLanguageCode,
+              onSuccess = { formatted ->
+                val msg =
+                  when (ctx.currentLanguageCode.trim().lowercase()) {
+                    "fr" -> "Localisation de l'église enregistrée : $formatted"
+                    "en" -> "Church location saved: $formatted"
+                    "es" -> "Ubicación de la iglesia guardada: $formatted"
+                    else -> "Pozisyon legliz la anrejistre: $formatted"
+                  }
+                ctx.viewModel.setFeedbackMessage(msg)
+              },
+              onError = { err -> ctx.viewModel.setFeedbackMessage(err) },
+            )
+          }
+        } else null,
       onRegisterNewMember =
         if (ctx.isAdminSession) {
           { fullName, customMatrikil, pin, phone, department, ministryRole ->

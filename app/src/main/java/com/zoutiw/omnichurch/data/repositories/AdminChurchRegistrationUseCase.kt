@@ -9,6 +9,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.zoutiw.omnichurch.core.network.OperationType
 import com.zoutiw.omnichurch.core.network.handleFirestoreError
+import com.zoutiw.omnichurch.core.utilities.ChurchLocationDetector
 import com.zoutiw.omnichurch.core.utilities.CryptoSecurity
 import com.zoutiw.omnichurch.core.utilities.SessionLockManager
 import com.zoutiw.omnichurch.data.models.Church
@@ -119,6 +120,7 @@ internal class AdminChurchRegistrationUseCase(
       ownerName = user.displayName?.takeIf { it.isNotBlank() },
       ownerPhoto = user.photoUrl?.toString(),
       authMethod = "email_password",
+      languageCode = languageCode,
     )
   }
 
@@ -155,6 +157,7 @@ internal class AdminChurchRegistrationUseCase(
       ownerName = user.displayName?.takeIf { it.isNotBlank() },
       ownerPhoto = user.photoUrl?.toString(),
       authMethod = "google",
+      languageCode = languageCode,
     )
   }
 
@@ -166,6 +169,7 @@ internal class AdminChurchRegistrationUseCase(
     ownerName: String?,
     ownerPhoto: String?,
     authMethod: String,
+    languageCode: String,
   ): Result<Church> {
     val activeUser =
       FirestorePayloadSanitizer.requireActiveAdminAuth(firebaseAuth, "kreye yon nouvo legliz")
@@ -193,6 +197,11 @@ internal class AdminChurchRegistrationUseCase(
 
       val resolvedUid = activeUser.uid
       val resolvedEmail = (activeUser.email ?: ownerEmail).trim().lowercase(Locale.US)
+      val formattedCity =
+        ChurchLocationDetector.formatChurchLocationWithDetectedCountry(
+          rawCity = churchAddress,
+          language = languageCode,
+        )
       val rawPayload =
         hashMapOf<String, Any?>(
           "id" to targetRef.id,
@@ -206,7 +215,8 @@ internal class AdminChurchRegistrationUseCase(
           "adminAuthMethod" to authMethod,
           "quickPinEnabled" to false,
           "autoLockMinutes" to 5,
-          "address" to churchAddress.trim().takeIf { it.isNotBlank() },
+          "city" to formattedCity,
+          "address" to formattedCity,
           "tagline" to "Legliz la nan poch ou",
           "status" to "active",
           "createdAt" to FieldValue.serverTimestamp(),
@@ -226,7 +236,8 @@ internal class AdminChurchRegistrationUseCase(
           id = targetRef.id,
           code = cleanCode,
           name = churchName,
-          address = churchAddress.trim(),
+          city = formattedCity,
+          address = formattedCity,
           ownerId = resolvedUid,
           adminGoogleEmail = resolvedEmail,
           adminGoogleUid = resolvedUid,

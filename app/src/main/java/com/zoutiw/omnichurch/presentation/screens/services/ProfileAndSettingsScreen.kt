@@ -55,6 +55,7 @@ fun ProfileAndSettingsScreen(
   onUpdateMemberPhoto: ((String) -> Unit)? = null,
   onUpdateAdminPhoto: ((String) -> Unit)? = null,
   onUpdateChurchLogo: ((String) -> Unit)? = null,
+  onUpdateChurchLocation: ((String) -> Unit)? = null,
   onRegisterNewMember:
     ((
       fullName: String,
@@ -196,7 +197,7 @@ fun ProfileAndSettingsScreen(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
       verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-      // 1. Member / Admin Summary Card + Church Logo + Notifications Shortcut
+      // 1. Member / Admin Summary Card + Church Logo + Location Auto-Detect + Notifications Shortcut
       ProfileSummaryHeaderCard(
         context = context,
         fullName = fullName,
@@ -222,6 +223,7 @@ fun ProfileAndSettingsScreen(
           photoPickerTarget = "church_logo"
           showPhotoSourceDialog = true
         },
+        onUpdateChurchLocation = onUpdateChurchLocation,
       )
 
       // 1b. Optional Google Account Linking & Biometric Quick Unlock

@@ -13,6 +13,7 @@ import com.google.firebase.firestore.snapshots
 import com.zoutiw.omnichurch.core.network.FirestoreProvider
 import com.zoutiw.omnichurch.core.network.OperationType
 import com.zoutiw.omnichurch.core.network.handleFirestoreError
+import com.zoutiw.omnichurch.core.utilities.ChurchLocationDetector
 import com.zoutiw.omnichurch.data.models.Church
 import com.zoutiw.omnichurch.data.models.Member
 import com.zoutiw.omnichurch.data.models.OmniAuthEvaluator
@@ -210,13 +211,19 @@ class ChurchRepository(
           }
         val adminEmail = adminUser.email?.trim()?.lowercase(Locale.US)?.takeIf { it.isNotEmpty() }
         val adminGoogleUid = adminUser.uid.trim()
+        val formattedCity =
+          ChurchLocationDetector.formatChurchLocationWithDetectedCountry(
+            rawCity = churchAddressInput,
+            language = Locale.getDefault().language,
+          )
 
         val rawChurchPayload =
           hashMapOf<String, Any?>(
             "id" to churchRef.id,
             "name" to cleanChurchName,
             "code" to generatedCode,
-            "address" to churchAddressInput.trim(),
+            "city" to formattedCity,
+            "address" to formattedCity,
             "ownerId" to adminGoogleUid,
             "adminGoogleEmail" to adminEmail,
             "adminGoogleUid" to adminGoogleUid,
@@ -239,7 +246,8 @@ class ChurchRepository(
             id = churchRef.id,
             code = generatedCode,
             name = cleanChurchName,
-            address = churchAddressInput.trim(),
+            city = formattedCity,
+            address = formattedCity,
             ownerId = adminGoogleUid,
             adminGoogleEmail = adminEmail.orEmpty(),
             adminGoogleUid = adminGoogleUid,
@@ -435,6 +443,51 @@ class ChurchRepository(
         )
       churchRef.update(updates).await()
       Result.success(cleanLogo)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      handleFirestoreError(e, OperationType.UPDATE, churchRef.path)
+      Result.failure(e)
+    }
+  }
+
+  /**
+   * Updates the church's `city` ("Vil / Depatman / Peyi") and syncs `address`, normalizing with
+   * [ChurchLocationDetector.formatChurchLocationWithDetectedCountry] so the localized country name
+   * is always appended without duplication.
+   */
+  suspend fun updateChurchLocation(
+    churchId: String,
+    rawCity: String,
+    languageCode: String = "ht",
+  ): Result<String> {
+    val cleanChurchId = churchId.trim()
+    if (cleanChurchId.isEmpty()) {
+      return Result.failure(IllegalArgumentException("ID legliz la manke."))
+    }
+    val adminUser =
+      FirestorePayloadSanitizer.requireActiveAdminAuth(auth, "modifye adrès oswa peyi legliz la")
+        .getOrElse { return Result.failure(it) }
+
+    val formattedCity =
+      ChurchLocationDetector.formatChurchLocationWithDetectedCountry(
+        rawCity = rawCity,
+        language = languageCode,
+      )
+    val churchRef = db.collection("churches").document(cleanChurchId)
+    return try {
+      val updates =
+        FirestorePayloadSanitizer.sanitizeChurchUpdate(
+          raw =
+            hashMapOf(
+              "city" to formattedCity,
+              "address" to formattedCity,
+              "updatedAt" to FieldValue.serverTimestamp(),
+            ),
+          currentUser = adminUser,
+        )
+      churchRef.update(updates).await()
+      Result.success(formattedCity)
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {

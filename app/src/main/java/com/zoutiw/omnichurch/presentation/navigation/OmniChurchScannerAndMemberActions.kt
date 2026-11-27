@@ -240,3 +240,21 @@ internal fun OmniChurchViewModel.performUpdateChurchLogo(
       .onFailure { err -> onError(err.localizedMessage ?: "Erè pandan mizajou logo legliz la.") }
   }
 }
+
+internal fun OmniChurchViewModel.performUpdateChurchLocation(
+  rawCity: String,
+  languageCode: String = "ht",
+  onSuccess: (String) -> Unit,
+  onError: (String) -> Unit,
+) {
+  val churchId = resolveCanonicalChurchId("")
+  if (churchId.isBlank()) {
+    onError("Pa ka jwenn legliz aktif la.")
+    return
+  }
+  viewModelScope.launch {
+    repository.updateChurchLocation(churchId, rawCity, languageCode)
+      .onSuccess { formatted -> onSuccess(formatted) }
+      .onFailure { err -> onError(err.localizedMessage ?: "Erè pandan mizajou peyi / vil legliz la.") }
+  }
+}

@@ -67,6 +67,12 @@ class OmniChurchRepository(
   suspend fun updateChurchLogo(churchId: String, logoDataUrl: String): Result<String> =
     churchRepository.updateChurchLogo(churchId, logoDataUrl)
 
+  suspend fun updateChurchLocation(
+    churchId: String,
+    rawCity: String,
+    languageCode: String = "ht",
+  ): Result<String> = churchRepository.updateChurchLocation(churchId, rawCity, languageCode)
+
   suspend fun setupChurchAndMemberProfile(
     createNewChurch: Boolean,
     churchNameInput: String,

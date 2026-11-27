@@ -19,12 +19,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.zoutiw.omnichurch.core.utilities.ChurchLocationDetector
 import com.zoutiw.omnichurch.data.models.AuthenticatedMemberSession
 import com.zoutiw.omnichurch.data.models.Church
 import com.zoutiw.omnichurch.presentation.components.GlassModalBottomSheet
@@ -36,6 +39,7 @@ import com.zoutiw.omnichurch.ui.theme.BrandGold
 import com.zoutiw.omnichurch.ui.theme.GlassWhite
 import com.zoutiw.omnichurch.ui.theme.PureWhite
 import com.zoutiw.omnichurch.ui.theme.SuccessGreen
+import java.util.Locale
 
 @Composable
 internal fun AuthMultiChurchSelectionSheet(
@@ -45,6 +49,10 @@ internal fun AuthMultiChurchSelectionSheet(
   onSelectChurch: (Church) -> Unit,
   onDismiss: () -> Unit,
 ) {
+  val context = LocalContext.current
+  val activeLanguage = remember {
+    ChurchLocationDetector.normalizeLanguage(Locale.getDefault().language)
+  }
   GlassModalBottomSheet(onDismissRequest = onDismiss) {
     Column(
       modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
@@ -79,6 +87,14 @@ internal fun AuthMultiChurchSelectionSheet(
         verticalArrangement = Arrangement.spacedBy(10.dp),
       ) {
         ownedChurches.forEach { ownedChurch ->
+          val formattedLocation =
+            ChurchLocationDetector.formatChurchModelLocation(
+              city = ownedChurch.city,
+              address = ownedChurch.address,
+              language = activeLanguage,
+              explicitCountry = ownedChurch.country,
+              context = context,
+            ).takeIf { it.isNotBlank() }
           PremiumGlassCard(
             cornerRadius = 16.dp,
             isHighlighted = true,
@@ -115,7 +131,7 @@ internal fun AuthMultiChurchSelectionSheet(
                   val rowSubtitle =
                     listOfNotNull(
                       ownedChurch.effectiveCode.takeIf { it.isNotBlank() },
-                      ownedChurch.city?.takeIf { it.isNotBlank() },
+                      formattedLocation,
                     ).joinToString(" • ")
                   if (rowSubtitle.isNotBlank()) {
                     Text(
@@ -150,6 +166,10 @@ internal fun AuthMatchedMemberSelectionSheet(
   onSelectSession: (AuthenticatedMemberSession) -> Unit,
   onDismiss: () -> Unit,
 ) {
+  val context = LocalContext.current
+  val activeLanguage = remember {
+    ChurchLocationDetector.normalizeLanguage(Locale.getDefault().language)
+  }
   GlassModalBottomSheet(onDismissRequest = onDismiss) {
     Column(
       modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
@@ -186,6 +206,14 @@ internal fun AuthMatchedMemberSelectionSheet(
         matchedSessions.forEach { matchedSession ->
           val matchedChurch = matchedSession.church
           val matchedMember = matchedSession.member
+          val formattedLocation =
+            ChurchLocationDetector.formatChurchModelLocation(
+              city = matchedChurch.city,
+              address = matchedChurch.address,
+              language = activeLanguage,
+              explicitCountry = matchedChurch.country,
+              context = context,
+            ).takeIf { it.isNotBlank() }
           PremiumGlassCard(
             cornerRadius = 16.dp,
             isHighlighted = true,
@@ -223,6 +251,7 @@ internal fun AuthMatchedMemberSelectionSheet(
                     listOfNotNull(
                       matchedChurch.effectiveCode.takeIf { it.isNotBlank() },
                       matchedMember.effectiveMatrikil.takeIf { it.isNotBlank() },
+                      formattedLocation,
                     ).joinToString(" • ")
                   if (rowSubtitle.isNotBlank()) {
                     Text(

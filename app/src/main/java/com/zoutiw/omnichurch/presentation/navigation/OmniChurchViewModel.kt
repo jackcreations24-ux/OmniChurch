@@ -469,6 +469,13 @@ class OmniChurchViewModel(
   fun updateChurchLogo(logoDataUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) =
     performUpdateChurchLogo(logoDataUrl, onSuccess, onError)
 
+  fun updateChurchLocation(
+    rawCity: String,
+    languageCode: String = "ht",
+    onSuccess: (String) -> Unit = {},
+    onError: (String) -> Unit = {},
+  ) = performUpdateChurchLocation(rawCity, languageCode, onSuccess, onError)
+
   companion object {
     private const val TAG = "OmniChurchViewModel"
     private const val STOP_TIMEOUT_MILLIS = 5000L

@@ -151,10 +151,13 @@ internal fun OfficialCertificateContent(
                 overflow = TextOverflow.Ellipsis,
               )
               val locText =
-                listOf(church.city, church.country)
-                  .map { it.trim() }
-                  .filter { it.isNotEmpty() }
-                  .joinToString(", ")
+                com.zoutiw.omnichurch.core.utilities.ChurchLocationDetector.formatChurchModelLocation(
+                  city = church.city,
+                  address = church.address,
+                  language = activeLang,
+                  explicitCountry = church.country,
+                  context = context,
+                )
               if (locText.isNotEmpty()) {
                 Text(
                   text = locText,
