@@ -18,6 +18,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.zoutiw.omnichurch.BuildConfig
 import com.zoutiw.omnichurch.core.donations.DeveloperDonationConfig
 import com.zoutiw.omnichurch.core.network.FirestoreProvider
+import com.zoutiw.omnichurch.presentation.components.RemoteShareAppConfig
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,6 +63,9 @@ class AdMobRemoteController(
   private val _donationConfigState = MutableStateFlow(DeveloperDonationConfig())
   val donationConfigState: StateFlow<DeveloperDonationConfig> = _donationConfigState.asStateFlow()
 
+  private val _shareAppConfigState = MutableStateFlow(RemoteShareAppConfig())
+  val shareAppConfigState: StateFlow<RemoteShareAppConfig> = _shareAppConfigState.asStateFlow()
+
   private var listenerRegistration: ListenerRegistration? = null
   private var preloadedInterstitialAd: InterstitialAd? = null
   private var preloadedInterstitialUnitId: String? = null
@@ -92,6 +96,7 @@ class AdMobRemoteController(
               _memberVerificationState.value = RemoteMemberVerificationConfig()
               _licensesState.value = emptyList()
               _donationConfigState.value = DeveloperDonationConfig()
+              _shareAppConfigState.value = RemoteShareAppConfig()
               recomputeState(
                 config = RemoteAdMobConfig(),
                 licenses = emptyList(),
@@ -102,15 +107,21 @@ class AdMobRemoteController(
             val rawAdMobMap = snapshot.get("adMob") as? Map<*, *>
             val rawVerificationMap = snapshot.get("memberVerification") as? Map<*, *>
             val rawDonationsMap = snapshot.get("donations") as? Map<*, *>
+            val rawShareAppMap =
+              (snapshot.get("shareApp") as? Map<*, *>)
+                ?: (snapshot.get("appShare") as? Map<*, *>)
+                ?: (snapshot.get("shareConfig") as? Map<*, *>)
             val rawLicensesList = snapshot.get("licenses")
             val parsedConfig = RemoteAdMobConfig.fromMap(rawAdMobMap)
             val parsedVerification = RemoteMemberVerificationConfig.fromMap(rawVerificationMap)
             val parsedDonations = DeveloperDonationConfig.fromMap(rawDonationsMap)
+            val parsedShareApp = RemoteShareAppConfig.fromMap(rawShareAppMap)
             val parsedLicenses = RemoteChurchLicense.fromList(rawLicensesList)
 
             _memberVerificationState.value = parsedVerification
             _licensesState.value = parsedLicenses
             _donationConfigState.value = parsedDonations
+            _shareAppConfigState.value = parsedShareApp
             recomputeState(
               config = parsedConfig,
               licenses = parsedLicenses,

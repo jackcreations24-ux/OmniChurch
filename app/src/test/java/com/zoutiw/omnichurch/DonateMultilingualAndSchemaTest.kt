@@ -125,4 +125,57 @@ class DonateMultilingualAndSchemaTest {
     assertTrue(en.moncashUssdHelper.contains("*202#"))
     assertTrue(es.moncashUssdHelper.contains("*202#"))
   }
+
+  @Test
+  fun `RemoteShareAppConfig parses developer_engine shareApp schema, sanitizes URLs, and formats 4-language share messages`() {
+    val rawShareMap =
+      mapOf(
+        "enabled" to true,
+        "shareUrl" to "omnichurch.download",
+        "androidUrl" to "https://play.google.com/store/apps/details?id=com.zoutiw.omnichurch",
+        "localizedCopy" to
+          mapOf(
+            "ht" to
+              mapOf(
+                "header" to "Vin dekouvri OmniChurch Pro!",
+                "churchHeaderTemplate" to "Rejwenn {church} sou OmniChurch Pro!",
+                "message" to "Telechaje aplikasyon legliz {church} la isit la: {url}",
+                "contentFooterLabel" to "📲 Aplikasyon Ofisyèl Legliz la:",
+              ),
+            "fr" to
+              mapOf(
+                "header" to "Découvrez OmniChurch Pro !",
+                "message" to "Suivez votre église en direct.",
+              ),
+          ),
+      )
+
+    val parsed = com.zoutiw.omnichurch.presentation.components.RemoteShareAppConfig.fromMap(rawShareMap)
+    assertTrue(parsed.enabled)
+    assertEquals(
+      "https://play.google.com/store/apps/details?id=com.zoutiw.omnichurch",
+      parsed.effectiveShareUrl,
+    )
+
+    val (htSubject, htBody) = parsed.buildGeneralAppShareText(languageCode = "ht", churchName = "Legliz Salem")
+    assertEquals("Rejwenn Legliz Salem sou OmniChurch Pro!", htSubject)
+    assertTrue(
+      htBody.contains(
+        "Telechaje aplikasyon legliz Legliz Salem la isit la: https://play.google.com/store/apps/details?id=com.zoutiw.omnichurch"
+      )
+    )
+
+    val (_, frBody) = parsed.buildGeneralAppShareText(languageCode = "fr", churchName = null)
+    assertTrue(frBody.contains("Découvrez OmniChurch Pro !"))
+    assertTrue(frBody.contains("Suivez votre église en direct."))
+    assertTrue(frBody.contains("https://play.google.com/store/apps/details?id=com.zoutiw.omnichurch"))
+
+    // Unsafe or localhost URLs fall back safely to official share URL
+    assertNull(
+      com.zoutiw.omnichurch.presentation.components.RemoteShareAppConfig.sanitizeShareUrl("http://localhost:3000")
+    )
+    assertNull(
+      com.zoutiw.omnichurch.presentation.components.RemoteShareAppConfig.sanitizeShareUrl("javascript:alert(1)")
+    )
+  }
 }
