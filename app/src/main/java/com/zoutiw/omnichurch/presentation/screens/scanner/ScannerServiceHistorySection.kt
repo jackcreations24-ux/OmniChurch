@@ -53,6 +53,34 @@ import kotlinx.coroutines.flow.flowOf
 
 private const val DEFAULT_VISIBLE_ROWS = 12
 
+internal fun resolveScannerServiceAbsentMembers(
+  service: ChurchService?,
+  regularRecords: List<AttendanceRecord>,
+  activeChurchMembersWithKeys: List<Pair<Member, List<String>>>,
+  nowMillis: Long = System.currentTimeMillis(),
+): List<Member> {
+  if (service == null || !service.isFinishedForAbsence(nowMillis) || activeChurchMembersWithKeys.isEmpty()) {
+    return emptyList()
+  }
+  val presentKeys = HashSet<String>(regularRecords.size * 4)
+  regularRecords.forEach { rec ->
+    listOf(
+        rec.memberDocId,
+        rec.memberId,
+        rec.memberCode,
+        rec.userId,
+        rec.barcodeToken,
+      )
+      .forEach { raw ->
+        val clean = raw.trim().uppercase()
+        if (clean.isNotEmpty()) presentKeys.add(clean)
+      }
+  }
+  return activeChurchMembersWithKeys.mapNotNull { (mem, memKeys) ->
+    if (memKeys.none { it in presentKeys }) mem else null
+  }
+}
+
 /**
  * Simple, borderless Service History section embedded directly inside the QR Scanner screen
  * with 4 compact tabs: Prezans, Reta, Absans, Vizitè.
@@ -64,21 +92,24 @@ internal fun ScannerServiceHistorySection(
   churchMembers: List<Member>,
   languageCode: String,
   observeServiceAttendances: (serviceId: String) -> Flow<List<AttendanceRecord>>,
+  nowMillis: Long = System.currentTimeMillis(),
   modifier: Modifier = Modifier,
 ) {
   val copy = remember(languageCode) { ScannerHistoryStrings.forLanguage(languageCode) }
 
-  // Combine activeService + allServices deduplicated by ID, active service first then newest
+  // Combine activeService + allServices deduplicated by ID:
+  // 1) Live active service first, 2) Past/started services newest first, 3) Future unstarted services last
   val orderedServices =
-    remember(activeService, allServices) {
+    remember(activeService, allServices, nowMillis) {
       val map = LinkedHashMap<String, ChurchService>()
       if (activeService != null && activeService.id.isNotBlank()) {
         map[activeService.id] = activeService
       }
       allServices
         .sortedWith(
-          compareByDescending<ChurchService> { it.isOpenForAttendance && !it.isPermanentlyEnded }
-            .thenByDescending { it.startTimeEpochMillis }
+          compareByDescending<ChurchService> { it.isLiveBadgeActive(nowMillis) }
+            .thenByDescending { !it.isBeforeStart(nowMillis) }
+            .thenByDescending { it.scheduledStartMillis() ?: it.startTimeEpochMillis }
             .thenByDescending { it.createdAt?.toDate()?.time ?: 0L }
         )
         .forEach { srv ->
@@ -94,12 +125,15 @@ internal fun ScannerServiceHistorySection(
   var selectedTab by remember { mutableStateOf(ScannerHistoryTab.PRESENT) }
   var isExpanded by remember { mutableStateOf(false) }
 
-  // Default to live active service (or latest service) unless user explicitly picks another
+  // Default to live active service (or latest past/started service) unless user explicitly picks another
   val inspectedService =
-    remember(orderedServices, activeService?.id, manuallyPickedServiceId) {
+    remember(orderedServices, activeService?.id, manuallyPickedServiceId, nowMillis) {
       val picked =
         manuallyPickedServiceId?.let { id -> orderedServices.firstOrNull { it.id == id } }
-      picked ?: activeService ?: orderedServices.firstOrNull()
+      picked
+        ?: activeService
+        ?: orderedServices.firstOrNull { !it.isBeforeStart(nowMillis) }
+        ?: orderedServices.firstOrNull()
     }
 
   // Reset expansion when switching service or tab
@@ -148,30 +182,19 @@ internal fun ScannerServiceHistorySection(
         }
     }
 
+  val hasServicePassedForAbsence =
+    remember(inspectedService, nowMillis) {
+      inspectedService?.isFinishedForAbsence(nowMillis) == true
+    }
+
   val absentMembers =
-    remember(regularRecords, activeChurchMembersWithKeys) {
-      if (activeChurchMembersWithKeys.isEmpty()) {
-        emptyList()
-      } else {
-        val presentKeys = HashSet<String>(regularRecords.size * 4)
-        regularRecords.forEach { rec ->
-          listOf(
-              rec.memberDocId,
-              rec.memberId,
-              rec.memberCode,
-              rec.userId,
-              rec.barcodeToken,
-            )
-            .forEach { raw ->
-              val clean = raw.trim().uppercase()
-              if (clean.isNotEmpty()) presentKeys.add(clean)
-            }
-        }
-        activeChurchMembersWithKeys
-          .mapNotNull { (mem, memKeys) ->
-            if (memKeys.none { it in presentKeys }) mem else null
-          }
-      }
+    remember(inspectedService, regularRecords, activeChurchMembersWithKeys, nowMillis) {
+      resolveScannerServiceAbsentMembers(
+        service = inspectedService,
+        regularRecords = regularRecords,
+        activeChurchMembersWithKeys = activeChurchMembersWithKeys,
+        nowMillis = nowMillis,
+      )
     }
 
   val timeFormatter = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
@@ -372,11 +395,11 @@ internal fun ScannerServiceHistorySection(
         }
       }
       ScannerHistoryTab.ABSENT -> {
-        if (absentMembers.isEmpty()) {
+        if (!hasServicePassedForAbsence) {
+          BorderlessEmptyNotice(copy.emptyAbsentPendingService)
+        } else if (absentMembers.isEmpty()) {
           BorderlessEmptyNotice(copy.emptyAbsent)
         } else {
-          val isServiceStillOpen =
-            inspectedService.isOpenForAttendance && !inspectedService.isPermanentlyEnded
           val displayed =
             if (isExpanded) absentMembers else absentMembers.take(DEFAULT_VISIBLE_ROWS)
           displayed.forEachIndexed { index, member ->
@@ -392,9 +415,8 @@ internal fun ScannerServiceHistorySection(
                 photoUrl = member.effectivePhotoUrl,
                 subtitle = subtitle,
                 trailingTop = null,
-                trailingStatus =
-                  if (isServiceStillOpen) copy.statusNotCheckedInYet else copy.statusAbsent,
-                statusColor = if (isServiceStillOpen) MutedGlassText else ErrorRed,
+                trailingStatus = copy.statusAbsent,
+                statusColor = ErrorRed,
                 showDivider = index < displayed.lastIndex,
               )
             }

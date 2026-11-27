@@ -125,9 +125,18 @@ data class ChurchService(
   }
 
   fun isFinishedForAbsence(now: Long = System.currentTimeMillis()): Boolean {
-    if (isPermanentlyLocked(now) || hasPassedEndTime(now)) return true
+    if (isBeforeStart(now)) return false
+    if (
+      isPermanentlyLocked(now) ||
+        status.equals("ended", ignoreCase = true) ||
+        status.equals("closed", ignoreCase = true) ||
+        hasPassedEndTime(now)
+    ) {
+      return true
+    }
     val startMs = scheduledStartMillis() ?: return false
-    return now > (startMs + 3_600_000L * 3)
+    return (!isOpenForAttendance && now > (startMs + 3_600_000L * 3)) ||
+      now > (startMs + 3_600_000L * 4)
   }
 
   val elapsedTimerLabel: String

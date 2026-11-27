@@ -234,7 +234,12 @@ internal fun ServiceAttendanceBottomSheet(
         text =
           when (activeFilter) {
             "vizite" -> "Poko gen okenn vizitè ki eskane nan sèvis sa a."
-            "absan" -> "Pa gen okenn manm absan pou sèvis sa a."
+            "absan" ->
+              if (!service.isFinishedForAbsence()) {
+                "Sèvis sa a poko pase. Absans yo parèt sèlman pou istwa sèvis ki deja pase."
+              } else {
+                "Pa gen okenn manm absan pou sèvis sa a."
+              }
             else -> "Poko gen prezans anrejistre pou sèvis sa a."
           },
         style = MaterialTheme.typography.bodyMedium,

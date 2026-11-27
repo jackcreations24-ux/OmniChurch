@@ -66,6 +66,7 @@ internal data class ScannerHistoryCopy(
   val emptyPresent: String,
   val emptyLate: String,
   val emptyAbsent: String,
+  val emptyAbsentPendingService: String,
   val emptyVisitor: String,
   val statusOnTime: String,
   val statusLate: String,
@@ -95,6 +96,8 @@ internal object ScannerHistoryStrings {
           emptyPresent = "Aucune présence enregistrée.",
           emptyLate = "Aucun retard enregistré.",
           emptyAbsent = "Aucun absent pour ce service.",
+          emptyAbsentPendingService =
+            "Ce service n'est pas encore passé. Les absences s'affichent uniquement après la fin du service.",
           emptyVisitor = "Aucun visiteur enregistré.",
           statusOnTime = "À l'heure",
           statusLate = "En retard",
@@ -120,6 +123,8 @@ internal object ScannerHistoryStrings {
           emptyPresent = "No attendance recorded yet.",
           emptyLate = "No late arrivals recorded.",
           emptyAbsent = "No absent members for this service.",
+          emptyAbsentPendingService =
+            "This service has not passed yet. Absences are only shown after the service ends.",
           emptyVisitor = "No visitors recorded yet.",
           statusOnTime = "On time",
           statusLate = "Late",
@@ -145,6 +150,8 @@ internal object ScannerHistoryStrings {
           emptyPresent = "Sin asistencias registradas.",
           emptyLate = "Sin llegadas tarde.",
           emptyAbsent = "Sin ausentes en este servicio.",
+          emptyAbsentPendingService =
+            "Este servicio aún no ha pasado. Las ausencias solo se muestran después de finalizar el servicio.",
           emptyVisitor = "Sin visitantes registrados.",
           statusOnTime = "A tiempo",
           statusLate = "Tarde",
@@ -170,6 +177,8 @@ internal object ScannerHistoryStrings {
           emptyPresent = "Poko gen okenn prezans anrejistre.",
           emptyLate = "Okenn manm an reta pou sèvis sa a.",
           emptyAbsent = "Okenn absans pou sèvis sa a.",
+          emptyAbsentPendingService =
+            "Sèvis sa a poko pase. Absans yo parèt sèlman pou istwa sèvis ki deja pase.",
           emptyVisitor = "Poko gen okenn vizitè anrejistre.",
           statusOnTime = "Alè",
           statusLate = "Reta",

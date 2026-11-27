@@ -380,6 +380,7 @@ fun AdminQRScannerScreen(
               churchMembers = churchMembers,
               languageCode = currentLanguageCode,
               observeServiceAttendances = observeServiceAttendances,
+              nowMillis = nowMillis,
             )
           }
         }
